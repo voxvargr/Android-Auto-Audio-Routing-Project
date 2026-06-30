@@ -46,18 +46,34 @@ final class AudioRouteController {
     }
 
     RoutingResult applyPreferredRoute(String selectedKey, String preferredBluetoothTarget) {
+        return applyPreferredRoute(selectedKey, preferredBluetoothTarget, true);
+    }
+
+    RoutingResult maintainPreferredRoute(String selectedKey, String preferredBluetoothTarget) {
+        return applyPreferredRoute(selectedKey, preferredBluetoothTarget, false);
+    }
+
+    private RoutingResult applyPreferredRoute(String selectedKey, String preferredBluetoothTarget, boolean forceApply) {
         List<RouteDevice> routeDevices = listRouteDevices();
         RouteDevice selected = findSelected(routeDevices, selectedKey, preferredBluetoothTarget);
         StringBuilder log = new StringBuilder();
 
-        if (preferredBluetoothTarget != null && preferredBluetoothTarget.trim().length() > 0) {
-            log.append("Preferred Bluetooth target: ").append(preferredBluetoothTarget.trim()).append('\n');
+        if (hasPreferredTarget(preferredBluetoothTarget)) {
+            log.append("Preferred Bluetooth target: ").append(formatPreferredTarget(preferredBluetoothTarget)).append('\n');
             if (!selected.matchesTarget(preferredBluetoothTarget)) {
-                log.append("No available Bluetooth route matched that target; using the selected route instead.\n");
+                log.append("No available Bluetooth route matched that saved device. ");
+                log.append("Android is probably exposing only a generic Bluetooth SCO route right now.\n");
+                appendBluetoothRoutes(log, routeDevices);
             }
         }
         log.append("Selected route: ").append(selected.detailLabel()).append('\n');
         log.append("Android Auto installed: ").append(AndroidAutoStatus.isInstalled(context) ? "yes" : "no").append('\n');
+
+        if (!forceApply && isCurrentRoute(selected)) {
+            log.append("Monitor check: selected route is already current; no reset needed.\n");
+            return new RoutingResult(true, log.toString());
+        }
+
         log.append("Public route layer: ");
 
         try {
@@ -140,7 +156,7 @@ final class AudioRouteController {
     }
 
     private RouteDevice findBluetoothTarget(List<RouteDevice> devices, String preferredBluetoothTarget) {
-        if (preferredBluetoothTarget == null || preferredBluetoothTarget.trim().length() == 0) {
+        if (!hasPreferredTarget(preferredBluetoothTarget)) {
             return null;
         }
         for (RouteDevice device : devices) {
@@ -149,6 +165,40 @@ final class AudioRouteController {
             }
         }
         return null;
+    }
+
+    private boolean hasPreferredTarget(String preferredBluetoothTarget) {
+        return preferredBluetoothTarget != null && preferredBluetoothTarget.trim().length() > 0;
+    }
+
+    private String formatPreferredTarget(String preferredBluetoothTarget) {
+        String[] parts = preferredBluetoothTarget.split("\\|");
+        StringBuilder output = new StringBuilder();
+        for (String part : parts) {
+            String clean = part.trim();
+            if (clean.length() == 0) {
+                continue;
+            }
+            if (output.length() > 0) {
+                output.append(" / ");
+            }
+            output.append(clean);
+        }
+        return output.length() == 0 ? preferredBluetoothTarget.trim() : output.toString();
+    }
+
+    private void appendBluetoothRoutes(StringBuilder log, List<RouteDevice> routeDevices) {
+        log.append("Visible Bluetooth routes:\n");
+        boolean found = false;
+        for (RouteDevice routeDevice : routeDevices) {
+            if (routeDevice.isBluetooth()) {
+                log.append("- ").append(routeDevice.detailLabel()).append('\n');
+                found = true;
+            }
+        }
+        if (!found) {
+            log.append("- none\n");
+        }
     }
 
     private AudioDeviceInfo findCommunicationDevice(RouteDevice selected) {
@@ -165,6 +215,19 @@ final class AudioRouteController {
             }
         }
         return null;
+    }
+
+    private boolean isCurrentRoute(RouteDevice selected) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            if (current == null) {
+                return false;
+            }
+            RouteDevice currentRoute = RouteDevice.from(current);
+            return currentRoute.key().equals(selected.key())
+                    || current.getId() == selected.id() && current.getType() == selected.type();
+        }
+        return selected.isBluetooth() && isBluetoothScoOn();
     }
 
     @SuppressWarnings("deprecation")

@@ -11,6 +11,9 @@ import android.os.Build;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 
 final class BluetoothDeviceCatalog {
     private BluetoothDeviceCatalog() {
@@ -42,24 +45,13 @@ final class BluetoothDeviceCatalog {
             }
             output.append('\n');
 
-            Set<BluetoothDevice> bondedDevices = adapter.getBondedDevices();
-            if (bondedDevices == null || bondedDevices.isEmpty()) {
+            List<BluetoothTarget> targets = listTargets(context, routeDevices);
+            if (targets.isEmpty()) {
                 output.append("No paired Bluetooth devices reported.\n");
             } else {
                 output.append("Paired devices:\n");
-                for (BluetoothDevice device : bondedDevices) {
-                    output.append("- ")
-                            .append(deviceName(device))
-                            .append(" - ")
-                            .append(deviceAddress(device))
-                            .append(" - ")
-                            .append(deviceClass(device));
-
-                    RouteDevice match = findMatchingRoute(device, routeDevices);
-                    if (match != null) {
-                        output.append("\n  route: ").append(match.detailLabel());
-                    }
-                    output.append('\n');
+                for (BluetoothTarget target : targets) {
+                    output.append("- ").append(target.inventoryLabel()).append('\n');
                 }
             }
 
@@ -75,9 +67,39 @@ final class BluetoothDeviceCatalog {
         }
     }
 
+    static List<BluetoothTarget> listTargets(Context context, List<RouteDevice> routeDevices) {
+        BluetoothManager manager = context.getSystemService(BluetoothManager.class);
+        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+        List<BluetoothTarget> targets = new ArrayList<>();
+        if (adapter == null) {
+            return targets;
+        }
+
+        try {
+            Set<BluetoothDevice> bondedDevices = adapter.getBondedDevices();
+            if (bondedDevices == null || bondedDevices.isEmpty()) {
+                return targets;
+            }
+            for (BluetoothDevice device : bondedDevices) {
+                targets.add(new BluetoothTarget(
+                        deviceAlias(device),
+                        deviceName(device),
+                        deviceAddress(device),
+                        deviceClass(device),
+                        findMatchingRoute(device, routeDevices)
+                ));
+            }
+            Collections.sort(targets, Comparator.comparing(BluetoothTarget::displayLabel, String.CASE_INSENSITIVE_ORDER));
+            return targets;
+        } catch (SecurityException e) {
+            return targets;
+        }
+    }
+
     private static RouteDevice findMatchingRoute(BluetoothDevice device, List<RouteDevice> routeDevices) {
         String deviceAddress = normalize(deviceAddress(device));
         String deviceName = normalize(deviceName(device));
+        String deviceAlias = normalize(deviceAlias(device));
         for (RouteDevice routeDevice : routeDevices) {
             if (!routeDevice.isBluetooth()) {
                 continue;
@@ -88,6 +110,9 @@ final class BluetoothDeviceCatalog {
                 return routeDevice;
             }
             if (deviceName.length() > 0 && (routeName.contains(deviceName) || deviceName.contains(routeName))) {
+                return routeDevice;
+            }
+            if (deviceAlias.length() > 0 && (routeName.contains(deviceAlias) || deviceAlias.contains(routeName))) {
                 return routeDevice;
             }
         }
@@ -115,6 +140,16 @@ final class BluetoothDeviceCatalog {
     private static String deviceName(BluetoothDevice device) {
         String name = device.getName();
         return name == null || name.length() == 0 ? "Unnamed device" : name;
+    }
+
+    private static String deviceAlias(BluetoothDevice device) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            String alias = device.getAlias();
+            if (alias != null && alias.length() > 0) {
+                return alias;
+            }
+        }
+        return deviceName(device);
     }
 
     private static String deviceAddress(BluetoothDevice device) {

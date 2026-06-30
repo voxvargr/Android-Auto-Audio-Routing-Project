@@ -78,13 +78,22 @@ final class RouteDevice {
     }
 
     boolean matchesTarget(String target) {
-        String normalizedTarget = normalize(target);
-        if (normalizedTarget.length() == 0) {
+        if (target == null) {
             return false;
         }
-        return normalize(name).contains(normalizedTarget)
-                || normalize(address).contains(normalizedTarget)
-                || normalize(typeLabel()).contains(normalizedTarget);
+        String[] parts = target.split("\\|");
+        for (String part : parts) {
+            String normalizedTarget = normalize(part);
+            if (normalizedTarget.length() == 0) {
+                continue;
+            }
+            if (normalize(name).contains(normalizedTarget)
+                    || normalize(address).contains(normalizedTarget)
+                    || normalize(typeLabel()).contains(normalizedTarget)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     String displayLabel() {

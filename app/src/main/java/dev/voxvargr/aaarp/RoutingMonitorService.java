@@ -21,15 +21,21 @@ public final class RoutingMonitorService extends Service {
 
     private static final String CHANNEL_ID = "aaarp-routing";
     private static final int NOTIFICATION_ID = 9401;
-    private static final long APPLY_INTERVAL_MS = 5000L;
+    private static final long ROUTE_CHECK_INTERVAL_MS = 2000L;
+    private static final long ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS = 5000L;
+    private static final int AUTO_STOP_MISSES = 3;
 
     private Handler handler;
     private AudioRouteController controller;
+    private boolean androidAutoSeen;
+    private int androidAutoMisses;
     private final Runnable applyLoop = new Runnable() {
         @Override
         public void run() {
-            applyFromPrefs();
-            handler.postDelayed(this, APPLY_INTERVAL_MS);
+            long nextDelay = applyFromPrefs();
+            if (nextDelay > 0L) {
+                handler.postDelayed(this, nextDelay);
+            }
         }
     };
 
@@ -76,11 +82,32 @@ public final class RoutingMonitorService extends Service {
         return null;
     }
 
-    private void applyFromPrefs() {
+    private long applyFromPrefs() {
         SharedPreferences prefs = AppPrefs.get(this);
         String selectedKey = prefs.getString(AppPrefs.SELECTED_DEVICE_KEY, null);
         String preferredBluetoothTarget = prefs.getString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, null);
-        controller.applyPreferredRoute(selectedKey, preferredBluetoothTarget);
+        boolean watchdogMode = prefs.getBoolean(AppPrefs.WATCHDOG_MODE, true);
+        boolean autoStop = prefs.getBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
+
+        if (watchdogMode) {
+            boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
+            if (!androidAutoRunning) {
+                if (androidAutoSeen) {
+                    androidAutoMisses++;
+                    if (autoStop && androidAutoMisses >= AUTO_STOP_MISSES) {
+                        stopMonitor();
+                        return -1L;
+                    }
+                }
+                return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
+            }
+
+            androidAutoSeen = true;
+            androidAutoMisses = 0;
+        }
+
+        controller.maintainPreferredRoute(selectedKey, preferredBluetoothTarget);
+        return ROUTE_CHECK_INTERVAL_MS;
     }
 
     private void stopMonitor() {

@@ -5,8 +5,11 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,14 +33,19 @@ public final class MainActivity extends Activity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private AudioRouteController controller;
     private Spinner deviceSpinner;
+    private Spinner bluetoothTargetSpinner;
     private ArrayAdapter<String> deviceAdapter;
+    private ArrayAdapter<String> bluetoothTargetAdapter;
     private final List<RouteDevice> routeDevices = new ArrayList<>();
+    private final List<BluetoothTarget> bluetoothTargets = new ArrayList<>();
     private TextView statusView;
     private TextView currentRouteView;
     private TextView bluetoothInventoryView;
     private TextView logView;
     private EditText preferredTargetEditText;
     private CheckBox rootCheckBox;
+    private CheckBox watchdogCheckBox;
+    private CheckBox autoStopCheckBox;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -95,10 +103,23 @@ public final class MainActivity extends Activity {
         deviceSpinner.setAdapter(deviceAdapter);
         content.addView(deviceSpinner, blockParams());
 
+        TextView savedTargetLabel = text("Saved Bluetooth target", 15, true);
+        savedTargetLabel.setTextColor(getColor(R.color.aaarp_text));
+        content.addView(savedTargetLabel, blockParams());
+
+        bluetoothTargetSpinner = new Spinner(this);
+        bluetoothTargetAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new ArrayList<>());
+        bluetoothTargetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        bluetoothTargetSpinner.setAdapter(bluetoothTargetAdapter);
+        content.addView(bluetoothTargetSpinner, blockParams());
+
         preferredTargetEditText = new EditText(this);
         preferredTargetEditText.setSingleLine(true);
-        preferredTargetEditText.setHint("Preferred Bluetooth target, e.g. Shokz");
-        preferredTargetEditText.setText(AppPrefs.get(this).getString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, ""));
+        preferredTargetEditText.setHint("Custom fallback, e.g. Shokz");
+        preferredTargetEditText.setText(AppPrefs.get(this).getString(
+                AppPrefs.CUSTOM_BLUETOOTH_QUERY,
+                AppPrefs.get(this).getString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, "")
+        ));
         preferredTargetEditText.setTextColor(getColor(R.color.aaarp_text));
         preferredTargetEditText.setHintTextColor(getColor(R.color.aaarp_muted));
         content.addView(preferredTargetEditText, blockParams());
@@ -122,10 +143,31 @@ public final class MainActivity extends Activity {
                 AppPrefs.get(this).edit().putBoolean(AppPrefs.USE_ROOT, isChecked).apply());
         content.addView(rootCheckBox, blockParams());
 
+        watchdogCheckBox = new CheckBox(this);
+        watchdogCheckBox.setText("Watch Android Auto");
+        watchdogCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        watchdogCheckBox.setChecked(AppPrefs.get(this).getBoolean(AppPrefs.WATCHDOG_MODE, true));
+        watchdogCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.WATCHDOG_MODE, isChecked).apply());
+        content.addView(watchdogCheckBox, blockParams());
+
+        autoStopCheckBox = new CheckBox(this);
+        autoStopCheckBox.setText("Auto-stop after Android Auto disconnects");
+        autoStopCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        autoStopCheckBox.setChecked(AppPrefs.get(this).getBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false));
+        autoStopCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, isChecked).apply());
+        content.addView(autoStopCheckBox, blockParams());
+
         LinearLayout rowThree = buttonRow();
         rowThree.addView(button("Root Check", v -> checkRootStatus()), weightParams());
         rowThree.addView(button("Diagnostics", v -> runRootDiagnostics()), weightParams());
         content.addView(rowThree, blockParams());
+
+        LinearLayout rowFour = buttonRow();
+        rowFour.addView(button("Save Diagnostics", v -> saveRootDiagnostics()), weightParams());
+        rowFour.addView(button("Battery Exempt", v -> requestBatteryExemption()), weightParams());
+        content.addView(rowFour, blockParams());
 
         bluetoothInventoryView = panelText();
         bluetoothInventoryView.setTypeface(Typeface.MONOSPACE);
@@ -149,6 +191,7 @@ public final class MainActivity extends Activity {
             }
             deviceAdapter.notifyDataSetChanged();
             restoreSelectedDevice();
+            refreshBluetoothTargets();
             updateBluetoothInventory();
             updateStatus("Devices refreshed.");
             updateCurrentRoute();
@@ -199,7 +242,11 @@ public final class MainActivity extends Activity {
         }
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, true).apply();
         updateStatus("Monitor running.");
-        setLog("Monitor started. AAARP will reapply the selected communication route.");
+        if (AppPrefs.get(this).getBoolean(AppPrefs.WATCHDOG_MODE, true)) {
+            setLog("Watchdog started. AAARP will wait for Android Auto, then maintain the selected route.");
+        } else {
+            setLog("Monitor started. AAARP will watch the selected route and only reset it if Android changes it.");
+        }
     }
 
     private void stopRouteMonitor() {
@@ -237,9 +284,53 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void saveRootDiagnostics() {
+        setLog("Collecting diagnostics for file...");
+        executor.execute(() -> {
+            RootShell.ShellResult result = controller.rootDiagnostics();
+            String body = result.output.length() == 0 ? "No diagnostics output." : result.output;
+            try {
+                String location = DiagnosticsFileWriter.write(this, body);
+                runOnUiThread(() -> {
+                    updateStatus("Diagnostics saved.");
+                    setLog("Saved diagnostics to " + location);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    updateStatus("Save failed.");
+                    setLog("Could not save diagnostics: " + e.getMessage() + "\n\n" + body);
+                });
+            }
+        });
+    }
+
+    private void requestBatteryExemption() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            setLog("Battery optimization exemption is not needed on this Android version.");
+            return;
+        }
+
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        if (powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+            setLog("AAARP is already ignoring battery optimizations.");
+            return;
+        }
+
+        try {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (RuntimeException e) {
+            Intent fallback = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            startActivity(fallback);
+        }
+    }
+
     private void updateStatus(String message) {
         boolean monitorEnabled = AppPrefs.get(this).getBoolean(AppPrefs.MONITOR_ENABLED, false);
+        boolean watchdogEnabled = AppPrefs.get(this).getBoolean(AppPrefs.WATCHDOG_MODE, true);
         statusView.setText(message + "\nMonitor: " + (monitorEnabled ? "on" : "off")
+                + "\nWatch Android Auto: " + (watchdogEnabled ? "on" : "off")
                 + "\nAndroid Auto package: " + (AndroidAutoStatus.isInstalled(this) ? "installed" : "not found"));
     }
 
@@ -258,9 +349,26 @@ public final class MainActivity extends Activity {
     }
 
     private String savePreferredBluetoothTarget() {
-        String target = preferredTargetEditText == null ? "" : preferredTargetEditText.getText().toString().trim();
+        String customTarget = preferredTargetEditText == null ? "" : preferredTargetEditText.getText().toString().trim();
+        String savedTarget = selectedBluetoothTargetQuery();
+        String target = savedTarget;
+        if (customTarget.length() > 0) {
+            target = target.length() == 0 ? customTarget : target + "|" + customTarget;
+        }
         AppPrefs.get(this).edit().putString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, target).apply();
+        AppPrefs.get(this).edit().putString(AppPrefs.CUSTOM_BLUETOOTH_QUERY, customTarget).apply();
         return target;
+    }
+
+    private String selectedBluetoothTargetQuery() {
+        int index = bluetoothTargetSpinner == null ? -1 : bluetoothTargetSpinner.getSelectedItemPosition();
+        if (index <= 0 || index > bluetoothTargets.size()) {
+            AppPrefs.get(this).edit().remove(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY).apply();
+            return "";
+        }
+        BluetoothTarget target = bluetoothTargets.get(index - 1);
+        AppPrefs.get(this).edit().putString(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY, target.key()).apply();
+        return target.matchQuery();
     }
 
     private void updateBluetoothInventory() {
@@ -268,6 +376,18 @@ public final class MainActivity extends Activity {
             return;
         }
         bluetoothInventoryView.setText(BluetoothDeviceCatalog.describe(this, routeDevices));
+    }
+
+    private void refreshBluetoothTargets() {
+        bluetoothTargets.clear();
+        bluetoothTargets.addAll(BluetoothDeviceCatalog.listTargets(this, routeDevices));
+        bluetoothTargetAdapter.clear();
+        bluetoothTargetAdapter.add("No saved Bluetooth target");
+        for (BluetoothTarget target : bluetoothTargets) {
+            bluetoothTargetAdapter.add(target.displayLabel());
+        }
+        bluetoothTargetAdapter.notifyDataSetChanged();
+        restoreSelectedBluetoothTarget();
     }
 
     private void restoreSelectedDevice() {
@@ -278,6 +398,19 @@ public final class MainActivity extends Activity {
         for (int i = 0; i < routeDevices.size(); i++) {
             if (selectedKey.equals(routeDevices.get(i).key())) {
                 deviceSpinner.setSelection(i);
+                return;
+            }
+        }
+    }
+
+    private void restoreSelectedBluetoothTarget() {
+        String selectedKey = AppPrefs.get(this).getString(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY, null);
+        if (selectedKey == null) {
+            return;
+        }
+        for (int i = 0; i < bluetoothTargets.size(); i++) {
+            if (selectedKey.equals(bluetoothTargets.get(i).key())) {
+                bluetoothTargetSpinner.setSelection(i + 1);
                 return;
             }
         }
