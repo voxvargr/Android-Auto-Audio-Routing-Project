@@ -1,0 +1,8 @@
+<resources>
+    <color name="aaarp_bg">#F7F8FA</color>
+    <color name="aaarp_panel">#FFFFFF</color>
+    <color name="aaarp_text">#17202A</color>
+    <color name="aaarp_muted">#5E6A75</color>
+    <color name="aaarp_accent">#0F766E</color>
+    <color name="aaarp_accent_dark">#0B5C55</color>
+</resources>
