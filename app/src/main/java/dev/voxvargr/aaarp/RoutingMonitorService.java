@@ -29,6 +29,8 @@ public final class RoutingMonitorService extends Service {
     private AudioRouteController controller;
     private boolean androidAutoSeen;
     private int androidAutoMisses;
+    private boolean routeReleasedAfterDisconnect;
+    private boolean routeActiveForTarget;
     private final Runnable applyLoop = new Runnable() {
         @Override
         public void run() {
@@ -88,12 +90,20 @@ public final class RoutingMonitorService extends Service {
         String preferredBluetoothTarget = prefs.getString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, null);
         boolean watchdogMode = prefs.getBoolean(AppPrefs.WATCHDOG_MODE, true);
         boolean autoStop = prefs.getBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
+        boolean releaseAfterDisconnect = prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true);
 
         if (watchdogMode) {
             boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
             if (!androidAutoRunning) {
                 if (androidAutoSeen) {
                     androidAutoMisses++;
+                    if (androidAutoMisses >= AUTO_STOP_MISSES) {
+                        if (releaseAfterDisconnect && !routeReleasedAfterDisconnect) {
+                            controller.clearRoute();
+                            routeReleasedAfterDisconnect = true;
+                            routeActiveForTarget = false;
+                        }
+                    }
                     if (autoStop && androidAutoMisses >= AUTO_STOP_MISSES) {
                         stopMonitor();
                         return -1L;
@@ -104,17 +114,49 @@ public final class RoutingMonitorService extends Service {
 
             androidAutoSeen = true;
             androidAutoMisses = 0;
+            routeReleasedAfterDisconnect = false;
         }
 
-        controller.maintainPreferredRoute(selectedKey, preferredBluetoothTarget);
+        if (watchdogMode && !hasPreferredTarget(preferredBluetoothTarget)) {
+            releaseActiveTargetRouteIfNeeded(releaseAfterDisconnect);
+            return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
+        }
+
+        if (watchdogMode && !controller.isPreferredBluetoothTargetConnected(preferredBluetoothTarget)) {
+            releaseActiveTargetRouteIfNeeded(releaseAfterDisconnect);
+            return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
+        }
+
+        AudioRouteController.RoutingResult result = controller.maintainPreferredRoute(selectedKey, preferredBluetoothTarget);
+        routeActiveForTarget = result.success;
         return ROUTE_CHECK_INTERVAL_MS;
     }
 
+    private boolean hasPreferredTarget(String preferredBluetoothTarget) {
+        return preferredBluetoothTarget != null && preferredBluetoothTarget.trim().length() > 0;
+    }
+
+    private void releaseActiveTargetRouteIfNeeded(boolean releaseAfterDisconnect) {
+        if (releaseAfterDisconnect && routeActiveForTarget) {
+            controller.clearRoute();
+            routeActiveForTarget = false;
+        }
+    }
+
     private void stopMonitor() {
+        releaseRouteOnStopIfEnabled();
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, false).apply();
         handler.removeCallbacks(applyLoop);
         stopForegroundCompat();
         stopSelf();
+    }
+
+    private void releaseRouteOnStopIfEnabled() {
+        SharedPreferences prefs = AppPrefs.get(this);
+        if (prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true)) {
+            controller.clearRoute();
+            routeActiveForTarget = false;
+        }
     }
 
     private void stopForegroundCompat() {

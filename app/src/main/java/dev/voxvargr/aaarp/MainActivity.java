@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
     private EditText preferredTargetEditText;
     private CheckBox rootCheckBox;
     private CheckBox watchdogCheckBox;
+    private CheckBox releaseAfterDisconnectCheckBox;
     private CheckBox autoStopCheckBox;
 
     @Override
@@ -103,7 +104,7 @@ public final class MainActivity extends Activity {
         deviceSpinner.setAdapter(deviceAdapter);
         content.addView(deviceSpinner, blockParams());
 
-        TextView savedTargetLabel = text("Saved Bluetooth target", 15, true);
+        TextView savedTargetLabel = text("Default Bluetooth audio target", 15, true);
         savedTargetLabel.setTextColor(getColor(R.color.aaarp_text));
         content.addView(savedTargetLabel, blockParams());
 
@@ -150,6 +151,14 @@ public final class MainActivity extends Activity {
         watchdogCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
                 AppPrefs.get(this).edit().putBoolean(AppPrefs.WATCHDOG_MODE, isChecked).apply());
         content.addView(watchdogCheckBox, blockParams());
+
+        releaseAfterDisconnectCheckBox = new CheckBox(this);
+        releaseAfterDisconnectCheckBox.setText("Release route after Android Auto disconnects");
+        releaseAfterDisconnectCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        releaseAfterDisconnectCheckBox.setChecked(AppPrefs.get(this).getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true));
+        releaseAfterDisconnectCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, isChecked).apply());
+        content.addView(releaseAfterDisconnectCheckBox, blockParams());
 
         autoStopCheckBox = new CheckBox(this);
         autoStopCheckBox.setText("Auto-stop after Android Auto disconnects");
@@ -233,7 +242,7 @@ public final class MainActivity extends Activity {
 
     private void startRouteMonitor() {
         saveSelectedDevice();
-        savePreferredBluetoothTarget();
+        String preferredBluetoothTarget = savePreferredBluetoothTarget();
         Intent intent = new Intent(this, RoutingMonitorService.class).setAction(RoutingMonitorService.ACTION_START);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent);
@@ -243,7 +252,11 @@ public final class MainActivity extends Activity {
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, true).apply();
         updateStatus("Monitor running.");
         if (AppPrefs.get(this).getBoolean(AppPrefs.WATCHDOG_MODE, true)) {
-            setLog("Watchdog started. AAARP will wait for Android Auto, then maintain the selected route.");
+            if (preferredBluetoothTarget.length() == 0) {
+                setLog("Watchdog started. Select a default Bluetooth audio target before AAARP will route Android Auto.");
+            } else {
+                setLog("Watchdog started. AAARP will wait for Android Auto and the default Bluetooth target, then maintain the selected route.");
+            }
         } else {
             setLog("Monitor started. AAARP will watch the selected route and only reset it if Android changes it.");
         }
@@ -288,7 +301,7 @@ public final class MainActivity extends Activity {
         setLog("Collecting diagnostics for file...");
         executor.execute(() -> {
             RootShell.ShellResult result = controller.rootDiagnostics();
-            String body = result.output.length() == 0 ? "No diagnostics output." : result.output;
+            String body = buildDiagnosticsReport(result);
             try {
                 String location = DiagnosticsFileWriter.write(this, body);
                 runOnUiThread(() -> {
@@ -302,6 +315,26 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    private String buildDiagnosticsReport(RootShell.ShellResult result) {
+        List<RouteDevice> snapshotRoutes = controller.listRouteDevices();
+        StringBuilder report = new StringBuilder();
+        report.append("AAARP diagnostics\n");
+        report.append("Android Auto installed: ").append(AndroidAutoStatus.isInstalled(this) ? "yes" : "no").append('\n');
+        report.append("Current communication route: ").append(controller.currentCommunicationDevice()).append('\n');
+        report.append("Watch Android Auto: ")
+                .append(AppPrefs.get(this).getBoolean(AppPrefs.WATCHDOG_MODE, true) ? "on" : "off").append('\n');
+        report.append("Default Bluetooth target: ")
+                .append(AppPrefs.get(this).getString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, "none")).append('\n');
+        report.append("Release route after Android Auto disconnects: ")
+                .append(AppPrefs.get(this).getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true) ? "on" : "off").append('\n');
+        report.append("Auto-stop after Android Auto disconnects: ")
+                .append(AppPrefs.get(this).getBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false) ? "on" : "off").append('\n');
+        report.append('\n').append(BluetoothDeviceCatalog.describe(this, snapshotRoutes)).append('\n');
+        report.append("\nRoot diagnostics exit code: ").append(result.exitCode).append('\n');
+        report.append(result.output.length() == 0 ? "No root diagnostics output.\n" : result.output);
+        return report.toString();
     }
 
     private void requestBatteryExemption() {

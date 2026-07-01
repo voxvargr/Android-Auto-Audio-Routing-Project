@@ -13,6 +13,7 @@ final class AppPrefs {
     static final String MONITOR_ENABLED = "monitor_enabled";
     static final String WATCHDOG_MODE = "watchdog_mode";
     static final String AUTO_STOP_AFTER_ANDROID_AUTO = "auto_stop_after_android_auto";
+    static final String RELEASE_ROUTE_AFTER_ANDROID_AUTO = "release_route_after_android_auto";
 
     private AppPrefs() {
     }

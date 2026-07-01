@@ -41,6 +41,24 @@ final class AudioRouteController {
         return devices;
     }
 
+    boolean isPreferredBluetoothTargetConnected(String preferredBluetoothTarget) {
+        if (!hasPreferredTarget(preferredBluetoothTarget)) {
+            return false;
+        }
+
+        try {
+            for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS | AudioManager.GET_DEVICES_OUTPUTS)) {
+                RouteDevice routeDevice = RouteDevice.from(device);
+                if (routeDevice.isBluetooth() && routeDevice.matchesTarget(preferredBluetoothTarget)) {
+                    return true;
+                }
+            }
+        } catch (SecurityException e) {
+            return false;
+        }
+        return false;
+    }
+
     RoutingResult applyPreferredRoute(String selectedKey) {
         return applyPreferredRoute(selectedKey, null);
     }
@@ -139,6 +157,13 @@ final class AudioRouteController {
             return targetMatch;
         }
 
+        if (hasPreferredTarget(preferredBluetoothTarget)) {
+            RouteDevice bluetoothFallback = firstBluetoothRoute(devices);
+            if (bluetoothFallback != null) {
+                return bluetoothFallback;
+            }
+        }
+
         if (selectedKey != null) {
             for (RouteDevice device : devices) {
                 if (selectedKey.equals(device.key())) {
@@ -153,6 +178,15 @@ final class AudioRouteController {
             }
         }
         return devices.get(0);
+    }
+
+    private RouteDevice firstBluetoothRoute(List<RouteDevice> devices) {
+        for (RouteDevice device : devices) {
+            if (device.isBluetooth()) {
+                return device;
+            }
+        }
+        return null;
     }
 
     private RouteDevice findBluetoothTarget(List<RouteDevice> devices, String preferredBluetoothTarget) {
