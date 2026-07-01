@@ -72,6 +72,15 @@ final class RootShell {
         return run(command, 8000);
     }
 
+    ShellResult resetBluetooth() {
+        String command = "echo 'AAARP Bluetooth reset starting'; "
+                + "svc bluetooth disable; "
+                + "sleep 2; "
+                + "svc bluetooth enable; "
+                + "echo 'AAARP Bluetooth reset requested'";
+        return run(command, 10000);
+    }
+
     static final class ShellResult {
         final boolean success;
         final int exitCode;

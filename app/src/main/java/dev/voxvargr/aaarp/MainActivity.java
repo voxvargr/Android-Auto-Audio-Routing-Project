@@ -45,8 +45,10 @@ public final class MainActivity extends Activity {
     private EditText preferredTargetEditText;
     private CheckBox rootCheckBox;
     private CheckBox watchdogCheckBox;
+    private CheckBox restoreAfterBootCheckBox;
     private CheckBox releaseAfterDisconnectCheckBox;
     private CheckBox autoStopCheckBox;
+    private CheckBox resetBluetoothAfterDisconnectCheckBox;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -152,6 +154,14 @@ public final class MainActivity extends Activity {
                 AppPrefs.get(this).edit().putBoolean(AppPrefs.WATCHDOG_MODE, isChecked).apply());
         content.addView(watchdogCheckBox, blockParams());
 
+        restoreAfterBootCheckBox = new CheckBox(this);
+        restoreAfterBootCheckBox.setText("Restore monitor after reboot");
+        restoreAfterBootCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        restoreAfterBootCheckBox.setChecked(AppPrefs.get(this).getBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true));
+        restoreAfterBootCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, isChecked).apply());
+        content.addView(restoreAfterBootCheckBox, blockParams());
+
         releaseAfterDisconnectCheckBox = new CheckBox(this);
         releaseAfterDisconnectCheckBox.setText("Release route after Android Auto disconnects");
         releaseAfterDisconnectCheckBox.setTextColor(getColor(R.color.aaarp_text));
@@ -168,6 +178,14 @@ public final class MainActivity extends Activity {
                 AppPrefs.get(this).edit().putBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, isChecked).apply());
         content.addView(autoStopCheckBox, blockParams());
 
+        resetBluetoothAfterDisconnectCheckBox = new CheckBox(this);
+        resetBluetoothAfterDisconnectCheckBox.setText("Reset Bluetooth after Android Auto disconnects");
+        resetBluetoothAfterDisconnectCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        resetBluetoothAfterDisconnectCheckBox.setChecked(AppPrefs.get(this).getBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false));
+        resetBluetoothAfterDisconnectCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, isChecked).apply());
+        content.addView(resetBluetoothAfterDisconnectCheckBox, blockParams());
+
         LinearLayout rowThree = buttonRow();
         rowThree.addView(button("Root Check", v -> checkRootStatus()), weightParams());
         rowThree.addView(button("Diagnostics", v -> runRootDiagnostics()), weightParams());
@@ -177,6 +195,9 @@ public final class MainActivity extends Activity {
         rowFour.addView(button("Save Diagnostics", v -> saveRootDiagnostics()), weightParams());
         rowFour.addView(button("Battery Exempt", v -> requestBatteryExemption()), weightParams());
         content.addView(rowFour, blockParams());
+
+        Button resetBluetoothButton = button("Reset Bluetooth", v -> resetBluetoothNow());
+        content.addView(resetBluetoothButton, blockParams());
 
         bluetoothInventoryView = panelText();
         bluetoothInventoryView.setTypeface(Typeface.MONOSPACE);
@@ -325,12 +346,16 @@ public final class MainActivity extends Activity {
         report.append("Current communication route: ").append(controller.currentCommunicationDevice()).append('\n');
         report.append("Watch Android Auto: ")
                 .append(AppPrefs.get(this).getBoolean(AppPrefs.WATCHDOG_MODE, true) ? "on" : "off").append('\n');
+        report.append("Restore monitor after reboot: ")
+                .append(AppPrefs.get(this).getBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true) ? "on" : "off").append('\n');
         report.append("Default Bluetooth target: ")
                 .append(AppPrefs.get(this).getString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, "none")).append('\n');
         report.append("Release route after Android Auto disconnects: ")
                 .append(AppPrefs.get(this).getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true) ? "on" : "off").append('\n');
         report.append("Auto-stop after Android Auto disconnects: ")
                 .append(AppPrefs.get(this).getBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false) ? "on" : "off").append('\n');
+        report.append("Reset Bluetooth after Android Auto disconnects: ")
+                .append(AppPrefs.get(this).getBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false) ? "on" : "off").append('\n');
         report.append('\n').append(BluetoothDeviceCatalog.describe(this, snapshotRoutes)).append('\n');
         report.append("\nRoot diagnostics exit code: ").append(result.exitCode).append('\n');
         report.append(result.output.length() == 0 ? "No root diagnostics output.\n" : result.output);
@@ -359,11 +384,24 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void resetBluetoothNow() {
+        setLog("Resetting Bluetooth...");
+        executor.execute(() -> {
+            RootShell.ShellResult result = controller.resetBluetoothWithRoot();
+            runOnUiThread(() -> {
+                updateStatus(result.success ? "Bluetooth reset requested." : "Bluetooth reset failed.");
+                setLog(result.output.length() == 0 ? "No root output." : result.output);
+            });
+        });
+    }
+
     private void updateStatus(String message) {
         boolean monitorEnabled = AppPrefs.get(this).getBoolean(AppPrefs.MONITOR_ENABLED, false);
         boolean watchdogEnabled = AppPrefs.get(this).getBoolean(AppPrefs.WATCHDOG_MODE, true);
+        boolean restoreAfterBoot = AppPrefs.get(this).getBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true);
         statusView.setText(message + "\nMonitor: " + (monitorEnabled ? "on" : "off")
                 + "\nWatch Android Auto: " + (watchdogEnabled ? "on" : "off")
+                + "\nRestore after reboot: " + (restoreAfterBoot ? "on" : "off")
                 + "\nAndroid Auto package: " + (AndroidAutoStatus.isInstalled(this) ? "installed" : "not found"));
     }
 

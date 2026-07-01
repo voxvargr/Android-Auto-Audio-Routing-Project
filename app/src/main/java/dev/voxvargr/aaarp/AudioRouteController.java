@@ -143,6 +143,10 @@ final class AudioRouteController {
         return rootShell.diagnostics();
     }
 
+    RootShell.ShellResult resetBluetoothWithRoot() {
+        return rootShell.resetBluetooth();
+    }
+
     boolean isRootAvailable() {
         return rootShell.isAvailable();
     }

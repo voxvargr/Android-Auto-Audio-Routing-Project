@@ -31,6 +31,8 @@ public final class RoutingMonitorService extends Service {
     private int androidAutoMisses;
     private boolean routeReleasedAfterDisconnect;
     private boolean routeActiveForTarget;
+    private boolean targetWasActiveThisSession;
+    private boolean bluetoothResetAfterDisconnect;
     private final Runnable applyLoop = new Runnable() {
         @Override
         public void run() {
@@ -91,6 +93,7 @@ public final class RoutingMonitorService extends Service {
         boolean watchdogMode = prefs.getBoolean(AppPrefs.WATCHDOG_MODE, true);
         boolean autoStop = prefs.getBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
         boolean releaseAfterDisconnect = prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true);
+        boolean resetBluetoothAfterDisconnect = prefs.getBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
 
         if (watchdogMode) {
             boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
@@ -103,15 +106,22 @@ public final class RoutingMonitorService extends Service {
                             routeReleasedAfterDisconnect = true;
                             routeActiveForTarget = false;
                         }
-                    }
-                    if (autoStop && androidAutoMisses >= AUTO_STOP_MISSES) {
-                        stopMonitor();
-                        return -1L;
+                        resetBluetoothAfterDisconnectIfNeeded(resetBluetoothAfterDisconnect);
+                        if (autoStop) {
+                            stopMonitor();
+                            return -1L;
+                        }
+                        androidAutoSeen = false;
+                        androidAutoMisses = 0;
                     }
                 }
                 return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
             }
 
+            if (!androidAutoSeen) {
+                targetWasActiveThisSession = false;
+                bluetoothResetAfterDisconnect = false;
+            }
             androidAutoSeen = true;
             androidAutoMisses = 0;
             routeReleasedAfterDisconnect = false;
@@ -129,6 +139,9 @@ public final class RoutingMonitorService extends Service {
 
         AudioRouteController.RoutingResult result = controller.maintainPreferredRoute(selectedKey, preferredBluetoothTarget);
         routeActiveForTarget = result.success;
+        if (result.success) {
+            targetWasActiveThisSession = true;
+        }
         return ROUTE_CHECK_INTERVAL_MS;
     }
 
@@ -141,6 +154,14 @@ public final class RoutingMonitorService extends Service {
             controller.clearRoute();
             routeActiveForTarget = false;
         }
+    }
+
+    private void resetBluetoothAfterDisconnectIfNeeded(boolean resetBluetoothAfterDisconnect) {
+        if (!resetBluetoothAfterDisconnect || bluetoothResetAfterDisconnect || !targetWasActiveThisSession) {
+            return;
+        }
+        bluetoothResetAfterDisconnect = true;
+        new Thread(() -> controller.resetBluetoothWithRoot(), "aaarp-bluetooth-reset").start();
     }
 
     private void stopMonitor() {
