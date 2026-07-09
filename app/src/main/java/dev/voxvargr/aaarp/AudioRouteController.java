@@ -59,6 +59,14 @@ final class AudioRouteController {
         return false;
     }
 
+    AndroidAutoConnection currentAndroidAutoConnection() {
+        try {
+            return AndroidAutoConnection.detect(context, rootShell);
+        } catch (RuntimeException e) {
+            return AndroidAutoConnection.fallback();
+        }
+    }
+
     RoutingResult applyPreferredRoute(String selectedKey) {
         return applyPreferredRoute(selectedKey, null);
     }
@@ -147,12 +155,35 @@ final class AudioRouteController {
         return rootShell.resetBluetooth();
     }
 
+    RootShell.ShellResult applyAndroidAutoAudioTweaks(String notificationRouteMode,
+                                                      String selectedKey,
+                                                      String preferredBluetoothTarget,
+                                                      boolean suppressDucking) {
+        RouteDevice notificationDevice = notificationRouteDevice(
+                notificationRouteMode,
+                selectedKey,
+                preferredBluetoothTarget
+        );
+        boolean routeNotifications = notificationDevice != null && notificationDevice.audioSystemOutputDevice() != 0;
+        int audioSystemDevice = routeNotifications ? notificationDevice.audioSystemOutputDevice() : 0;
+        String address = routeNotifications ? notificationDevice.address() : "";
+        return rootShell.applyAndroidAutoAudioTweaks(routeNotifications, audioSystemDevice, address, suppressDucking);
+    }
+
+    RootShell.ShellResult clearAndroidAutoAudioTweaks(boolean restoreDucking) {
+        return rootShell.clearAndroidAutoAudioTweaks(restoreDucking);
+    }
+
     boolean isRootAvailable() {
         return rootShell.isAvailable();
     }
 
     boolean isAndroidAutoRunningWithRoot() {
-        return AndroidAutoStatus.isRunningWithRoot(rootShell);
+        try {
+            return AndroidAutoStatus.isRunningWithRoot(rootShell);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private RouteDevice findSelected(List<RouteDevice> devices, String selectedKey, String preferredBluetoothTarget) {
@@ -199,6 +230,63 @@ final class AudioRouteController {
         }
         for (RouteDevice device : devices) {
             if (device.isBluetooth() && device.matchesTarget(preferredBluetoothTarget)) {
+                return device;
+            }
+        }
+        return null;
+    }
+
+    private RouteDevice notificationRouteDevice(String notificationRouteMode,
+                                                String selectedKey,
+                                                String preferredBluetoothTarget) {
+        if (notificationRouteMode == null || AppPrefs.NOTIFICATION_ROUTE_OFF.equals(notificationRouteMode)) {
+            return null;
+        }
+
+        List<RouteDevice> outputDevices = listOutputDevices();
+        if (AppPrefs.NOTIFICATION_ROUTE_SPEAKER.equals(notificationRouteMode)) {
+            return firstDeviceByType(outputDevices, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER);
+        }
+        if (AppPrefs.NOTIFICATION_ROUTE_EARPIECE.equals(notificationRouteMode)) {
+            return firstDeviceByType(outputDevices, AudioDeviceInfo.TYPE_BUILTIN_EARPIECE);
+        }
+        if (AppPrefs.NOTIFICATION_ROUTE_BLUETOOTH.equals(notificationRouteMode)) {
+            RouteDevice target = findBluetoothTarget(outputDevices, preferredBluetoothTarget);
+            if (target != null) {
+                return target;
+            }
+            RouteDevice selected = findDeviceByKey(outputDevices, selectedKey);
+            if (selected != null && selected.isBluetooth()) {
+                return selected;
+            }
+            return firstBluetoothRoute(outputDevices);
+        }
+        return null;
+    }
+
+    private List<RouteDevice> listOutputDevices() {
+        List<RouteDevice> devices = new ArrayList<>();
+        for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            devices.add(RouteDevice.from(device));
+        }
+        return devices;
+    }
+
+    private RouteDevice firstDeviceByType(List<RouteDevice> devices, int type) {
+        for (RouteDevice device : devices) {
+            if (device.type() == type) {
+                return device;
+            }
+        }
+        return null;
+    }
+
+    private RouteDevice findDeviceByKey(List<RouteDevice> devices, String selectedKey) {
+        if (selectedKey == null) {
+            return null;
+        }
+        for (RouteDevice device : devices) {
+            if (selectedKey.equals(device.key())) {
                 return device;
             }
         }

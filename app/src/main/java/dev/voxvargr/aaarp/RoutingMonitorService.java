@@ -33,6 +33,8 @@ public final class RoutingMonitorService extends Service {
     private boolean routeActiveForTarget;
     private boolean targetWasActiveThisSession;
     private boolean bluetoothResetAfterDisconnect;
+    private String activeAudioTweakKey;
+    private boolean audioTweakDuckingActive;
     private final Runnable applyLoop = new Runnable() {
         @Override
         public void run() {
@@ -87,27 +89,22 @@ public final class RoutingMonitorService extends Service {
     }
 
     private long applyFromPrefs() {
-        SharedPreferences prefs = AppPrefs.get(this);
-        String selectedKey = prefs.getString(AppPrefs.SELECTED_DEVICE_KEY, null);
-        String preferredBluetoothTarget = prefs.getString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, null);
-        boolean watchdogMode = prefs.getBoolean(AppPrefs.WATCHDOG_MODE, true);
-        boolean autoStop = prefs.getBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
-        boolean releaseAfterDisconnect = prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true);
-        boolean resetBluetoothAfterDisconnect = prefs.getBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
+        ProfileSettings.MonitorSettings settings = ProfileSettings.monitorSettings(this, null);
 
-        if (watchdogMode) {
+        if (settings.watchdogMode) {
             boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
             if (!androidAutoRunning) {
                 if (androidAutoSeen) {
                     androidAutoMisses++;
                     if (androidAutoMisses >= AUTO_STOP_MISSES) {
-                        if (releaseAfterDisconnect && !routeReleasedAfterDisconnect) {
+                        clearAudioTweaksIfNeeded();
+                        if (settings.releaseAfterAndroidAuto && !routeReleasedAfterDisconnect) {
                             controller.clearRoute();
                             routeReleasedAfterDisconnect = true;
                             routeActiveForTarget = false;
                         }
-                        resetBluetoothAfterDisconnectIfNeeded(resetBluetoothAfterDisconnect);
-                        if (autoStop) {
+                        resetBluetoothAfterDisconnectIfNeeded(settings.resetBluetoothAfterAndroidAuto);
+                        if (settings.autoStopAfterAndroidAuto) {
                             stopMonitor();
                             return -1L;
                         }
@@ -118,6 +115,8 @@ public final class RoutingMonitorService extends Service {
                 return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
             }
 
+            AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
+            settings = ProfileSettings.monitorSettings(this, connection);
             if (!androidAutoSeen) {
                 targetWasActiveThisSession = false;
                 bluetoothResetAfterDisconnect = false;
@@ -125,19 +124,23 @@ public final class RoutingMonitorService extends Service {
             androidAutoSeen = true;
             androidAutoMisses = 0;
             routeReleasedAfterDisconnect = false;
+            applyAudioTweaksIfNeeded(settings);
         }
 
-        if (watchdogMode && !hasPreferredTarget(preferredBluetoothTarget)) {
-            releaseActiveTargetRouteIfNeeded(releaseAfterDisconnect);
+        if (settings.watchdogMode && !hasPreferredTarget(settings.preferredBluetoothTarget)) {
+            releaseActiveTargetRouteIfNeeded(settings.releaseAfterAndroidAuto);
             return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
         }
 
-        if (watchdogMode && !controller.isPreferredBluetoothTargetConnected(preferredBluetoothTarget)) {
-            releaseActiveTargetRouteIfNeeded(releaseAfterDisconnect);
+        if (settings.watchdogMode && !controller.isPreferredBluetoothTargetConnected(settings.preferredBluetoothTarget)) {
+            releaseActiveTargetRouteIfNeeded(settings.releaseAfterAndroidAuto);
             return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
         }
 
-        AudioRouteController.RoutingResult result = controller.maintainPreferredRoute(selectedKey, preferredBluetoothTarget);
+        AudioRouteController.RoutingResult result = controller.maintainPreferredRoute(
+                settings.selectedDeviceKey,
+                settings.preferredBluetoothTarget
+        );
         routeActiveForTarget = result.success;
         if (result.success) {
             targetWasActiveThisSession = true;
@@ -154,6 +157,46 @@ public final class RoutingMonitorService extends Service {
             controller.clearRoute();
             routeActiveForTarget = false;
         }
+    }
+
+    private void applyAudioTweaksIfNeeded(ProfileSettings.MonitorSettings settings) {
+        String tweakKey = settings.profileId
+                + "|"
+                + settings.notificationRouteMode
+                + "|"
+                + settings.suppressNotificationDucking
+                + "|"
+                + settings.selectedDeviceKey
+                + "|"
+                + settings.preferredBluetoothTarget;
+        boolean hasTweaks = !AppPrefs.NOTIFICATION_ROUTE_OFF.equals(settings.notificationRouteMode)
+                || settings.suppressNotificationDucking;
+        if (!hasTweaks) {
+            clearAudioTweaksIfNeeded();
+            return;
+        }
+        if (tweakKey.equals(activeAudioTweakKey)) {
+            return;
+        }
+        clearAudioTweaksIfNeeded();
+        activeAudioTweakKey = tweakKey;
+        audioTweakDuckingActive = settings.suppressNotificationDucking;
+        new Thread(() -> controller.applyAndroidAutoAudioTweaks(
+                settings.notificationRouteMode,
+                settings.selectedDeviceKey,
+                settings.preferredBluetoothTarget,
+                settings.suppressNotificationDucking
+        ), "aaarp-audio-tweaks").start();
+    }
+
+    private void clearAudioTweaksIfNeeded() {
+        if (activeAudioTweakKey == null && !audioTweakDuckingActive) {
+            return;
+        }
+        boolean restoreDucking = audioTweakDuckingActive;
+        activeAudioTweakKey = null;
+        audioTweakDuckingActive = false;
+        new Thread(() -> controller.clearAndroidAutoAudioTweaks(restoreDucking), "aaarp-audio-tweaks-clear").start();
     }
 
     private void resetBluetoothAfterDisconnectIfNeeded(boolean resetBluetoothAfterDisconnect) {
@@ -173,6 +216,7 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void releaseRouteOnStopIfEnabled() {
+        clearAudioTweaksIfNeeded();
         SharedPreferences prefs = AppPrefs.get(this);
         if (prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true)) {
             controller.clearRoute();

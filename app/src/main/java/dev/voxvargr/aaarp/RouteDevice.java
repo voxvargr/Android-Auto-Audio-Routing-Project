@@ -77,6 +77,28 @@ final class RouteDevice {
                 || type == AudioDeviceInfo.TYPE_BLE_BROADCAST;
     }
 
+    int audioSystemOutputDevice() {
+        switch (type) {
+            case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE:
+                return 0x1;
+            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:
+                return 0x2;
+            case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                return 0x4;
+            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                return 0x8;
+            case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                return 0x10;
+            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                return 0x80;
+            case AudioDeviceInfo.TYPE_BLE_HEADSET:
+            case AudioDeviceInfo.TYPE_BLE_SPEAKER:
+                return 0x20000000;
+            default:
+                return 0;
+        }
+    }
+
     boolean matchesTarget(String target) {
         if (target == null) {
             return false;

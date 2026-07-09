@@ -16,6 +16,12 @@ final class AppPrefs {
     static final String AUTO_STOP_AFTER_ANDROID_AUTO = "auto_stop_after_android_auto";
     static final String RELEASE_ROUTE_AFTER_ANDROID_AUTO = "release_route_after_android_auto";
     static final String RESET_BLUETOOTH_AFTER_ANDROID_AUTO = "reset_bluetooth_after_android_auto";
+    static final String NOTIFICATION_ROUTE_MODE = "notification_route_mode";
+    static final String NOTIFICATION_ROUTE_OFF = "off";
+    static final String NOTIFICATION_ROUTE_SPEAKER = "speaker";
+    static final String NOTIFICATION_ROUTE_EARPIECE = "earpiece";
+    static final String NOTIFICATION_ROUTE_BLUETOOTH = "bluetooth";
+    static final String SUPPRESS_NOTIFICATION_DUCKING = "suppress_notification_ducking";
 
     private AppPrefs() {
     }

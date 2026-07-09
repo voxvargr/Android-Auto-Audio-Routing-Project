@@ -72,6 +72,13 @@ final class RootShell {
         return run(command, 8000);
     }
 
+    ShellResult currentWifiIdentity() {
+        String command = "echo '--- cmd wifi status ---'; cmd wifi status 2>/dev/null || true; "
+                + "echo '--- dumpsys wifi connection ---'; dumpsys wifi 2>/dev/null "
+                + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo' | head -n 40 || true";
+        return run(command, 5000);
+    }
+
     ShellResult resetBluetooth() {
         String command = "echo 'AAARP Bluetooth reset starting'; "
                 + "svc bluetooth disable; "
@@ -79,6 +86,57 @@ final class RootShell {
                 + "svc bluetooth enable; "
                 + "echo 'AAARP Bluetooth reset requested'";
         return run(command, 10000);
+    }
+
+    ShellResult applyAndroidAutoAudioTweaks(boolean routeNotifications, int audioSystemDevice,
+                                            String address, boolean suppressDucking) {
+        StringBuilder command = new StringBuilder();
+        command.append("echo '--- AAARP Android Auto audio tweaks ---'; ");
+        appendStrategyIds(command);
+        if (routeNotifications) {
+            command.append("echo 'Notification route device: ").append(audioSystemDevice).append("'; ");
+            command.append("for ID in $AAARP_STRATEGY_IDS; do ");
+            command.append("cmd audio set-device-role-for-strategy \"$ID\" 1 ")
+                    .append(audioSystemDevice)
+                    .append(" ")
+                    .append(shellQuote(address))
+                    .append(" 2>&1 || true; ");
+            command.append("done; ");
+        }
+        if (suppressDucking) {
+            command.append("echo 'Suppressing SystemUI audio focus while Android Auto is active'; ");
+            command.append("cmd appops set com.android.systemui TAKE_AUDIO_FOCUS ignore 2>&1 || true; ");
+        }
+        return run(command.toString(), 8000);
+    }
+
+    ShellResult clearAndroidAutoAudioTweaks(boolean restoreDucking) {
+        StringBuilder command = new StringBuilder();
+        command.append("echo '--- AAARP clearing Android Auto audio tweaks ---'; ");
+        appendStrategyIds(command);
+        command.append("for ID in $AAARP_STRATEGY_IDS; do ");
+        command.append("cmd audio clear-device-role-for-strategy \"$ID\" 1 2>&1 || true; ");
+        command.append("done; ");
+        if (restoreDucking) {
+            command.append("cmd appops set com.android.systemui TAKE_AUDIO_FOCUS allow 2>&1 || true; ");
+        }
+        return run(command.toString(), 8000);
+    }
+
+    private void appendStrategyIds(StringBuilder command) {
+        command.append("AAARP_STRATEGY_IDS=\"$(dumpsys media.audio_policy 2>/dev/null ")
+                .append("| grep -i 'SONIFICATION' ")
+                .append("| sed -n 's/.*id[:= ]*\\([0-9][0-9]*\\).*/\\1/p' ")
+                .append("| tr '\\n' ' ')\"; ");
+        command.append("[ -n \"$AAARP_STRATEGY_IDS\" ] || AAARP_STRATEGY_IDS=\"5\"; ");
+        command.append("echo \"Audio strategy ids: $AAARP_STRATEGY_IDS\"; ");
+    }
+
+    private String shellQuote(String value) {
+        if (value == null || value.length() == 0) {
+            return "''";
+        }
+        return "'" + value.replace("'", "'\\''") + "'";
     }
 
     static final class ShellResult {
