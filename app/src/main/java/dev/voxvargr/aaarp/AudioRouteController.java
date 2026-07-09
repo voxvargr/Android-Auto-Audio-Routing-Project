@@ -180,7 +180,8 @@ final class AudioRouteController {
 
     boolean isAndroidAutoRunningWithRoot() {
         try {
-            return AndroidAutoStatus.isRunningWithRoot(rootShell);
+            return AndroidAutoStatus.isRunningWithRoot(rootShell)
+                    && currentAndroidAutoConnection().specific();
         } catch (RuntimeException e) {
             return false;
         }

@@ -66,7 +66,14 @@ final class RootShell {
 
     ShellResult diagnostics() {
         String command = "echo '--- id ---'; id; "
-                + "echo '--- Android Auto PID ---'; pidof com.google.android.projection.gearhead 2>/dev/null || true; "
+                + "echo '--- Android Auto processes ---'; "
+                + "pidof com.google.android.projection.gearhead 2>/dev/null || true; "
+                + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
+                + "echo '--- Wi-Fi identity ---'; "
+                + "cmd wifi status 2>/dev/null || true; "
+                + "dumpsys wifi 2>/dev/null "
+                + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo|networkId|ephemeral|specifier|local.?only|validated|internet|restricted|trusted' "
+                + "| head -n 80 || true; "
                 + "echo '--- cmd audio help ---'; cmd audio help 2>/dev/null || cmd audio 2>/dev/null || true; "
                 + "echo '--- dumpsys audio routes ---'; dumpsys audio 2>/dev/null | grep -i -E 'communication|bluetooth|sco|a2dp|route|device' | head -n 120 || true";
         return run(command, 8000);
@@ -75,7 +82,8 @@ final class RootShell {
     ShellResult currentWifiIdentity() {
         String command = "echo '--- cmd wifi status ---'; cmd wifi status 2>/dev/null || true; "
                 + "echo '--- dumpsys wifi connection ---'; dumpsys wifi 2>/dev/null "
-                + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo' | head -n 40 || true";
+                + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo|networkId|ephemeral|specifier|local.?only|validated|internet|restricted|trusted' "
+                + "| head -n 80 || true";
         return run(command, 5000);
     }
 

@@ -408,23 +408,32 @@ public final class MainActivity extends Activity {
         setLog("Detecting Android Auto connection...");
         executor.execute(() -> {
             try {
-                if (!controller.isAndroidAutoRunningWithRoot()) {
+                boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
+                AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
+                if (!androidAutoRunning) {
+                    String visibleWifi = connection.specific()
+                            ? "\nVisible Wi-Fi identity: " + connection.label() + "\nIgnored until Android Auto is running."
+                            : "";
                     runOnUiThread(() -> {
                         lastDetectedConnection = AndroidAutoConnection.fallback();
                         selectProfile(ProfileSettings.DEFAULT_PROFILE_ID);
                         updateStatus("Android Auto is not running.");
-                        setLog("No active Android Auto connection detected.\nProfile: Default");
+                        setLog("No active Android Auto connection detected."
+                                + visibleWifi
+                                + "\nProfile: Default");
                     });
                     return;
                 }
 
-                AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
                 lastDetectedConnection = connection;
                 String mappedProfileId = ProfileSettings.profileIdForConnection(this, connection);
                 runOnUiThread(() -> {
                     selectProfile(mappedProfileId);
-                    updateStatus(connection.specific() ? "Android Auto profile detected." : "No specific AA profile detected.");
-                    setLog("Detected profile source: " + connection.label()
+                    updateStatus(connection.specific()
+                            ? "Android Auto profile detected."
+                            : "Android Auto running; no specific profile detected.");
+                    setLog("Android Auto process: " + (androidAutoRunning ? "detected" : "not confirmed")
+                            + "\nDetected profile source: " + connection.label()
                             + "\nProfile: " + mappedProfileId);
                 });
             } catch (RuntimeException e) {

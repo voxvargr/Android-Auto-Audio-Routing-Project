@@ -1,11 +1,6 @@
 package dev.voxvargr.aaarp;
 
-import android.Manifest;
 import android.content.Context;
-import android.content.pm.PackageManager;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
-import android.os.Build;
 
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -33,43 +28,23 @@ final class AndroidAutoConnection {
     }
 
     static AndroidAutoConnection detect(Context context, RootShell rootShell) {
-        AndroidAutoConnection publicWifi = detectPublicWifi(context);
-        if (publicWifi.specific()) {
-            return publicWifi;
-        }
-
         RootShell.ShellResult result = rootShell.currentWifiIdentity();
-        return fromWifiText(result.output);
-    }
-
-    private static AndroidAutoConnection detectPublicWifi(Context context) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                    && context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                return fallback();
-            }
-
-            WifiManager wifiManager = context.getSystemService(WifiManager.class);
-            WifiInfo info = wifiManager == null ? null : wifiManager.getConnectionInfo();
-            if (info == null) {
-                return fallback();
-            }
-
-            String ssid = cleanSsid(info.getSSID());
-            String bssid = clean(info.getBSSID(), "");
-            if (!hasUsefulWifiValue(ssid) && !hasUsefulWifiValue(bssid)) {
-                return fallback();
-            }
-
-            return fromParts(ssid, bssid);
-        } catch (RuntimeException e) {
-            return fallback();
+        AndroidAutoConnection rootWifi = fromWifiText(result.output);
+        if (rootWifi.specific()) {
+            return rootWifi;
         }
+
+        return fallback();
     }
 
     private static AndroidAutoConnection fromWifiText(String text) {
-        String ssid = firstMatch(SSID_PATTERN, text);
-        String bssid = firstMatch(BSSID_PATTERN, text);
+        String currentWifi = currentWifiDetails(text);
+        if (!looksLikeWirelessAndroidAutoWifi(currentWifi)) {
+            return fallback();
+        }
+
+        String ssid = firstMatch(SSID_PATTERN, currentWifi);
+        String bssid = firstMatch(BSSID_PATTERN, currentWifi);
         if (!hasUsefulWifiValue(ssid) && !hasUsefulWifiValue(bssid)) {
             return fallback();
         }
@@ -102,6 +77,35 @@ final class AndroidAutoConnection {
         }
         Matcher matcher = pattern.matcher(text);
         return matcher.find() ? matcher.group(1).trim() : "";
+    }
+
+    private static String currentWifiDetails(String text) {
+        if (text == null) {
+            return "";
+        }
+        String[] lines = text.split("\\r?\\n");
+        for (String line : lines) {
+            if (line.indexOf("WifiInfo:") >= 0 || line.indexOf("mWifiInfo") >= 0) {
+                return line;
+            }
+        }
+        return "";
+    }
+
+    private static boolean looksLikeWirelessAndroidAutoWifi(String currentWifi) {
+        String lower = clean(currentWifi, "").toLowerCase(Locale.US);
+        if (lower.length() == 0) {
+            return false;
+        }
+        if (lower.contains("ephemeral: true") || lower.contains("is_ephemeral=true")) {
+            return true;
+        }
+        if (lower.contains("requesting package name:")
+                && !lower.contains("requesting package name: <none>")) {
+            return true;
+        }
+        return lower.contains("trusted: false")
+                && (lower.contains("restricted: true") || lower.contains("net id: -1"));
     }
 
     private static boolean hasUsefulWifiValue(String value) {
