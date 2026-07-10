@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 final class RootShell {
-    private static final int MAX_OUTPUT_CHARS = 12000;
+    private static final int MAX_OUTPUT_CHARS = 24000;
 
     ShellResult run(String command, long timeoutMs) {
         StringBuilder output = new StringBuilder();
@@ -74,9 +74,58 @@ final class RootShell {
                 + "dumpsys wifi 2>/dev/null "
                 + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo|networkId|ephemeral|specifier|local.?only|validated|internet|restricted|trusted' "
                 + "| head -n 80 || true; "
+                + "echo '--- appops audio focus ---'; "
+                + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
+                + "cmd appops get android TAKE_AUDIO_FOCUS 2>/dev/null || true; "
+                + "cmd appops get com.android.systemui TAKE_AUDIO_FOCUS 2>/dev/null || true; "
+                + "cmd appops get com.google.android.projection.gearhead TAKE_AUDIO_FOCUS 2>/dev/null || true; "
+                + "cmd appops get com.google.android.apps.messaging TAKE_AUDIO_FOCUS 2>/dev/null || true; "
+                + "echo '--- audio focus and ducking ---'; "
+                + "dumpsys audio 2>/dev/null "
+                + "| grep -i -E 'focus|duck|attenuat|loss|gain|request|abandon|client|uid|package|notification|sonification|music|ring|alarm|a2dp|sco|bluetooth' "
+                + "| head -n 220 || true; "
+                + "echo '--- audio policy focus and strategies ---'; "
+                + "dumpsys media.audio_policy 2>/dev/null "
+                + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
+                + "| head -n 220 || true; "
+                + "echo '--- media sessions ---'; "
+                + "dumpsys media_session 2>/dev/null "
+                + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|android auto|projection|gearhead' "
+                + "| head -n 120 || true; "
+                + "echo '--- Bluetooth audio state ---'; "
+                + "dumpsys bluetooth_manager 2>/dev/null "
+                + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
+                + "| head -n 160 || true; "
                 + "echo '--- cmd audio help ---'; cmd audio help 2>/dev/null || cmd audio 2>/dev/null || true; "
                 + "echo '--- dumpsys audio routes ---'; dumpsys audio 2>/dev/null | grep -i -E 'communication|bluetooth|sco|a2dp|route|device' | head -n 120 || true";
         return run(command, 8000);
+    }
+
+    ShellResult autoLogSnapshot() {
+        String command = "echo '--- auto log snapshot ---'; date; "
+                + "echo '--- Android Auto processes ---'; "
+                + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
+                + "echo '--- Wi-Fi identity ---'; "
+                + "cmd wifi status 2>/dev/null | grep -i -E 'connected to|WifiInfo|SSID|BSSID|Ephemeral|Requesting package|Trusted|Restricted' || true; "
+                + "echo '--- appops audio focus ---'; "
+                + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
+                + "echo '--- audio focus and ducking ---'; "
+                + "dumpsys audio 2>/dev/null "
+                + "| grep -i -E 'focus|duck|attenuat|loss|gain|request|abandon|client|uid|package|notification|sonification|music|ring|alarm|a2dp|sco|bluetooth' "
+                + "| head -n 160 || true; "
+                + "echo '--- audio policy ---'; "
+                + "dumpsys media.audio_policy 2>/dev/null "
+                + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
+                + "| head -n 160 || true; "
+                + "echo '--- media sessions ---'; "
+                + "dumpsys media_session 2>/dev/null "
+                + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|projection|gearhead' "
+                + "| head -n 80 || true; "
+                + "echo '--- Bluetooth audio state ---'; "
+                + "dumpsys bluetooth_manager 2>/dev/null "
+                + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
+                + "| head -n 100 || true";
+        return run(command, 10000);
     }
 
     ShellResult currentWifiIdentity() {

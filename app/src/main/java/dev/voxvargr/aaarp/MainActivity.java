@@ -515,6 +515,7 @@ public final class MainActivity extends Activity {
                 .append(prefString(AppPrefs.NOTIFICATION_ROUTE_MODE, AppPrefs.NOTIFICATION_ROUTE_OFF)).append('\n');
         report.append("Try to stop notification ducking: ")
                 .append(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false) ? "on" : "off").append('\n');
+        report.append("Auto log directory: ").append(AutoLogWriter.location(this)).append('\n');
         report.append('\n').append(BluetoothDeviceCatalog.describe(this, snapshotRoutes)).append('\n');
         report.append("\nRoot diagnostics exit code: ").append(result.exitCode).append('\n');
         report.append(result.output.length() == 0 ? "No root diagnostics output.\n" : result.output);

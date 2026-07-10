@@ -151,6 +151,10 @@ final class AudioRouteController {
         return rootShell.diagnostics();
     }
 
+    RootShell.ShellResult autoLogSnapshot() {
+        return rootShell.autoLogSnapshot();
+    }
+
     RootShell.ShellResult resetBluetoothWithRoot() {
         return rootShell.resetBluetooth();
     }

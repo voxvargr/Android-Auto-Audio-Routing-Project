@@ -23,6 +23,8 @@ public final class RoutingMonitorService extends Service {
     private static final int NOTIFICATION_ID = 9401;
     private static final long ROUTE_CHECK_INTERVAL_MS = 2000L;
     private static final long ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS = 5000L;
+    private static final long AUTO_LOG_HEARTBEAT_MS = 30000L;
+    private static final long AUTO_LOG_ROOT_SNAPSHOT_MS = 120000L;
     private static final int AUTO_STOP_MISSES = 3;
 
     private Handler handler;
@@ -35,6 +37,10 @@ public final class RoutingMonitorService extends Service {
     private boolean bluetoothResetAfterDisconnect;
     private String activeAudioTweakKey;
     private boolean audioTweakDuckingActive;
+    private long lastAutoLogAt;
+    private long lastRootSnapshotAt;
+    private boolean rootSnapshotRunning;
+    private String lastAutoLogSummary;
     private final Runnable applyLoop = new Runnable() {
         @Override
         public void run() {
@@ -68,6 +74,7 @@ public final class RoutingMonitorService extends Service {
 
         startForeground(NOTIFICATION_ID, buildNotification());
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, true).apply();
+        autoLog("monitor start action=" + action + " logs=" + AutoLogWriter.location(this));
         handler.removeCallbacks(applyLoop);
         handler.post(applyLoop);
 
@@ -90,18 +97,22 @@ public final class RoutingMonitorService extends Service {
 
     private long applyFromPrefs() {
         ProfileSettings.MonitorSettings settings = ProfileSettings.monitorSettings(this, null);
+        AndroidAutoConnection activeConnection = AndroidAutoConnection.fallback();
 
         if (settings.watchdogMode) {
             boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
             if (!androidAutoRunning) {
+                autoLogState("aa_idle", settings, AndroidAutoConnection.fallback(), false, false, null);
                 if (androidAutoSeen) {
                     androidAutoMisses++;
                     if (androidAutoMisses >= AUTO_STOP_MISSES) {
+                        autoLog("android auto disconnected; misses=" + androidAutoMisses);
                         clearAudioTweaksIfNeeded();
                         if (settings.releaseAfterAndroidAuto && !routeReleasedAfterDisconnect) {
                             controller.clearRoute();
                             routeReleasedAfterDisconnect = true;
                             routeActiveForTarget = false;
+                            autoLog("route cleared after Android Auto disconnect");
                         }
                         resetBluetoothAfterDisconnectIfNeeded(settings.resetBluetoothAfterAndroidAuto);
                         if (settings.autoStopAfterAndroidAuto) {
@@ -116,24 +127,31 @@ public final class RoutingMonitorService extends Service {
             }
 
             AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
+            activeConnection = connection;
             settings = ProfileSettings.monitorSettings(this, connection);
             if (!androidAutoSeen) {
                 targetWasActiveThisSession = false;
                 bluetoothResetAfterDisconnect = false;
+                autoLog("android auto connected profile=" + settings.profileId + " source=" + connection.label());
             }
             androidAutoSeen = true;
             androidAutoMisses = 0;
             routeReleasedAfterDisconnect = false;
+            autoLogState("aa_active", settings, connection, true, null, null);
+            maybeLogRootSnapshot("aa_active");
             applyAudioTweaksIfNeeded(settings);
         }
 
         if (settings.watchdogMode && !hasPreferredTarget(settings.preferredBluetoothTarget)) {
             releaseActiveTargetRouteIfNeeded(settings.releaseAfterAndroidAuto);
+            autoLogState("missing_preferred_target", settings, activeConnection, true, false, null);
             return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
         }
 
-        if (settings.watchdogMode && !controller.isPreferredBluetoothTargetConnected(settings.preferredBluetoothTarget)) {
+        boolean targetConnected = controller.isPreferredBluetoothTargetConnected(settings.preferredBluetoothTarget);
+        if (settings.watchdogMode && !targetConnected) {
             releaseActiveTargetRouteIfNeeded(settings.releaseAfterAndroidAuto);
+            autoLogState("target_not_connected", settings, activeConnection, true, false, null);
             return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
         }
 
@@ -145,6 +163,7 @@ public final class RoutingMonitorService extends Service {
         if (result.success) {
             targetWasActiveThisSession = true;
         }
+        autoLogState("route_check", settings, activeConnection, true, targetConnected, result.log);
         return ROUTE_CHECK_INTERVAL_MS;
     }
 
@@ -156,6 +175,7 @@ public final class RoutingMonitorService extends Service {
         if (releaseAfterDisconnect && routeActiveForTarget) {
             controller.clearRoute();
             routeActiveForTarget = false;
+            autoLog("route released because preferred target is not active");
         }
     }
 
@@ -181,6 +201,10 @@ public final class RoutingMonitorService extends Service {
         clearAudioTweaksIfNeeded();
         activeAudioTweakKey = tweakKey;
         audioTweakDuckingActive = settings.suppressNotificationDucking;
+        autoLog("applying audio tweaks notificationRoute=" + settings.notificationRouteMode
+                + " suppressDucking=" + settings.suppressNotificationDucking
+                + " selected=" + settings.selectedDeviceKey
+                + " target=" + settings.preferredBluetoothTarget);
         new Thread(() -> controller.applyAndroidAutoAudioTweaks(
                 settings.notificationRouteMode,
                 settings.selectedDeviceKey,
@@ -196,6 +220,7 @@ public final class RoutingMonitorService extends Service {
         boolean restoreDucking = audioTweakDuckingActive;
         activeAudioTweakKey = null;
         audioTweakDuckingActive = false;
+        autoLog("clearing audio tweaks restoreDucking=" + restoreDucking);
         new Thread(() -> controller.clearAndroidAutoAudioTweaks(restoreDucking), "aaarp-audio-tweaks-clear").start();
     }
 
@@ -204,10 +229,12 @@ public final class RoutingMonitorService extends Service {
             return;
         }
         bluetoothResetAfterDisconnect = true;
+        autoLog("resetting Bluetooth after Android Auto disconnect");
         new Thread(() -> controller.resetBluetoothWithRoot(), "aaarp-bluetooth-reset").start();
     }
 
     private void stopMonitor() {
+        autoLog("monitor stop requested");
         releaseRouteOnStopIfEnabled();
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, false).apply();
         handler.removeCallbacks(applyLoop);
@@ -221,7 +248,59 @@ public final class RoutingMonitorService extends Service {
         if (prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true)) {
             controller.clearRoute();
             routeActiveForTarget = false;
+            autoLog("route cleared on monitor stop");
         }
+    }
+
+    private void autoLogState(String stage, ProfileSettings.MonitorSettings settings,
+                              AndroidAutoConnection connection, Boolean androidAutoRunning,
+                              Boolean targetConnected, String routeLog) {
+        long now = System.currentTimeMillis();
+        String summary = "stage=" + stage
+                + " aa=" + value(androidAutoRunning)
+                + " profile=" + settings.profileId
+                + " source=" + (connection == null ? "unknown" : connection.label())
+                + " targetConnected=" + value(targetConnected)
+                + " routeActive=" + routeActiveForTarget
+                + " currentRoute=" + controller.currentCommunicationDevice()
+                + " notificationRoute=" + settings.notificationRouteMode
+                + " suppressDucking=" + settings.suppressNotificationDucking
+                + " preferredTarget=" + settings.preferredBluetoothTarget
+                + " selected=" + settings.selectedDeviceKey;
+        boolean changed = !summary.equals(lastAutoLogSummary);
+        if (changed || now - lastAutoLogAt >= AUTO_LOG_HEARTBEAT_MS) {
+            lastAutoLogSummary = summary;
+            lastAutoLogAt = now;
+            autoLog(summary);
+            if (routeLog != null && routeLog.length() > 0) {
+                autoLog("route_result " + routeLog);
+            }
+        }
+    }
+
+    private void maybeLogRootSnapshot(String reason) {
+        long now = System.currentTimeMillis();
+        if (rootSnapshotRunning || now - lastRootSnapshotAt < AUTO_LOG_ROOT_SNAPSHOT_MS) {
+            return;
+        }
+        rootSnapshotRunning = true;
+        lastRootSnapshotAt = now;
+        new Thread(() -> {
+            try {
+                RootShell.ShellResult result = controller.autoLogSnapshot();
+                autoLog("root_snapshot reason=" + reason + " exit=" + result.exitCode + " output=" + result.output);
+            } finally {
+                rootSnapshotRunning = false;
+            }
+        }, "aaarp-auto-log-snapshot").start();
+    }
+
+    private void autoLog(String message) {
+        AutoLogWriter.append(this, message);
+    }
+
+    private String value(Boolean value) {
+        return value == null ? "unknown" : (value ? "yes" : "no");
     }
 
     private void stopForegroundCompat() {
