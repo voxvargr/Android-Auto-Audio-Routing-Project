@@ -22,6 +22,9 @@ final class AppPrefs {
     static final String NOTIFICATION_ROUTE_EARPIECE = "earpiece";
     static final String NOTIFICATION_ROUTE_BLUETOOTH = "bluetooth";
     static final String SUPPRESS_NOTIFICATION_DUCKING = "suppress_notification_ducking";
+    static final String SUPPRESS_NOTIFICATION_DUCKING_ALWAYS = "suppress_notification_ducking_always";
+    static final String MUTE_NOTIFICATIONS_DURING_PLAYBACK = "mute_notifications_during_playback";
+    static final String MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS = "mute_notifications_during_playback_always";
 
     private AppPrefs() {
     }

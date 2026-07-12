@@ -145,6 +145,33 @@ final class RootShell {
         return run(command, 10000);
     }
 
+    ShellResult restoreAppAccess(String packageName, Iterable<String> runtimePermissions,
+                                 boolean restoreBatteryExemption) {
+        StringBuilder command = new StringBuilder();
+        command.append("echo '--- AAARP restoring app access ---'; ");
+        command.append("PKG=").append(shellQuote(packageName)).append("; ");
+        for (String permission : runtimePermissions) {
+            if (permission == null || permission.length() == 0) {
+                continue;
+            }
+            command.append("echo 'Granting ").append(permission).append("'; ");
+            command.append("pm grant \"$PKG\" ")
+                    .append(shellQuote(permission))
+                    .append(" 2>&1 || pm grant --user 0 \"$PKG\" ")
+                    .append(shellQuote(permission))
+                    .append(" 2>&1 || true; ");
+            if ("android.permission.POST_NOTIFICATIONS".equals(permission)) {
+                command.append("cmd appops set \"$PKG\" POST_NOTIFICATION allow 2>&1 || true; ");
+            }
+        }
+        if (restoreBatteryExemption) {
+            command.append("echo 'Restoring battery optimization exemption'; ");
+            command.append("cmd deviceidle whitelist +\"$PKG\" 2>&1 ")
+                    .append("|| dumpsys deviceidle whitelist +\"$PKG\" 2>&1 || true; ");
+        }
+        return run(command.toString(), 10000);
+    }
+
     ShellResult applyAndroidAutoAudioTweaks(boolean routeNotifications, int audioSystemDevice,
                                             String address, boolean suppressDucking) {
         StringBuilder command = new StringBuilder();

@@ -22,6 +22,9 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -29,6 +32,8 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_PERMISSIONS = 4100;
+    private static final int REQUEST_EXPORT_SETTINGS = 4101;
+    private static final int REQUEST_IMPORT_SETTINGS = 4102;
     private static final String[] NOTIFICATION_ROUTE_LABELS = {
             "Leave notifications alone",
             "Phone speaker",
@@ -68,6 +73,9 @@ public final class MainActivity extends Activity {
     private CheckBox autoStopCheckBox;
     private CheckBox resetBluetoothAfterDisconnectCheckBox;
     private CheckBox suppressDuckingCheckBox;
+    private CheckBox suppressDuckingAlwaysCheckBox;
+    private CheckBox muteNotificationsDuringPlaybackCheckBox;
+    private CheckBox muteNotificationsDuringPlaybackAlwaysCheckBox;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -94,6 +102,23 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_PERMISSIONS) {
             refreshDevices();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_EXPORT_SETTINGS && requestCode != REQUEST_IMPORT_SETTINGS) {
+            return;
+        }
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            setLog("Settings backup/restore canceled.");
+            return;
+        }
+        if (requestCode == REQUEST_EXPORT_SETTINGS) {
+            writeSettingsBackup(data.getData());
+        } else {
+            readSettingsBackup(data.getData());
         }
     }
 
@@ -245,9 +270,38 @@ public final class MainActivity extends Activity {
         suppressDuckingCheckBox.setText("Try to stop notification audio ducking");
         suppressDuckingCheckBox.setTextColor(getColor(R.color.aaarp_text));
         suppressDuckingCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false));
-        suppressDuckingCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, isChecked).apply());
+        suppressDuckingCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            AppPrefs.get(this).edit().putBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, isChecked).apply();
+            updateDependentSoundTweakControls();
+        });
         content.addView(suppressDuckingCheckBox, blockParams());
+
+        suppressDuckingAlwaysCheckBox = new CheckBox(this);
+        suppressDuckingAlwaysCheckBox.setText("Also stop notification ducking outside Android Auto");
+        suppressDuckingAlwaysCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
+        suppressDuckingAlwaysCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, isChecked).apply());
+        content.addView(suppressDuckingAlwaysCheckBox, blockParams());
+
+        muteNotificationsDuringPlaybackCheckBox = new CheckBox(this);
+        muteNotificationsDuringPlaybackCheckBox.setText("Mute notification sounds during media playback");
+        muteNotificationsDuringPlaybackCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        muteNotificationsDuringPlaybackCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false));
+        muteNotificationsDuringPlaybackCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            AppPrefs.get(this).edit().putBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, isChecked).apply();
+            updateDependentSoundTweakControls();
+        });
+        content.addView(muteNotificationsDuringPlaybackCheckBox, blockParams());
+
+        muteNotificationsDuringPlaybackAlwaysCheckBox = new CheckBox(this);
+        muteNotificationsDuringPlaybackAlwaysCheckBox.setText("Also mute during playback outside Android Auto");
+        muteNotificationsDuringPlaybackAlwaysCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        muteNotificationsDuringPlaybackAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false));
+        muteNotificationsDuringPlaybackAlwaysCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, isChecked).apply());
+        content.addView(muteNotificationsDuringPlaybackAlwaysCheckBox, blockParams());
+        updateDependentSoundTweakControls();
 
         LinearLayout rowThree = buttonRow();
         rowThree.addView(button("Root Check", v -> checkRootStatus()), weightParams());
@@ -258,6 +312,11 @@ public final class MainActivity extends Activity {
         rowFour.addView(button("Save Diagnostics", v -> saveRootDiagnostics()), weightParams());
         rowFour.addView(button("Battery Exempt", v -> requestBatteryExemption()), weightParams());
         content.addView(rowFour, blockParams());
+
+        LinearLayout rowFive = buttonRow();
+        rowFive.addView(button("Backup Settings", v -> exportSettingsBackup()), weightParams());
+        rowFive.addView(button("Restore Settings", v -> importSettingsBackup()), weightParams());
+        content.addView(rowFive, blockParams());
 
         Button resetBluetoothButton = button("Reset Bluetooth", v -> resetBluetoothNow());
         content.addView(resetBluetoothButton, blockParams());
@@ -515,6 +574,12 @@ public final class MainActivity extends Activity {
                 .append(prefString(AppPrefs.NOTIFICATION_ROUTE_MODE, AppPrefs.NOTIFICATION_ROUTE_OFF)).append('\n');
         report.append("Try to stop notification ducking: ")
                 .append(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false) ? "on" : "off").append('\n');
+        report.append("Stop notification ducking outside Android Auto: ")
+                .append(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false) ? "on" : "off").append('\n');
+        report.append("Mute notification sounds during playback: ")
+                .append(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false) ? "on" : "off").append('\n');
+        report.append("Mute notification sounds outside Android Auto: ")
+                .append(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false) ? "on" : "off").append('\n');
         report.append("Auto log directory: ").append(AutoLogWriter.location(this)).append('\n');
         report.append('\n').append(BluetoothDeviceCatalog.describe(this, snapshotRoutes)).append('\n');
         report.append("\nRoot diagnostics exit code: ").append(result.exitCode).append('\n');
@@ -542,6 +607,95 @@ public final class MainActivity extends Activity {
             Intent fallback = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
             startActivity(fallback);
         }
+    }
+
+    private void exportSettingsBackup() {
+        saveCurrentUiSettings();
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        intent.putExtra(Intent.EXTRA_TITLE, "AAARP-settings-backup.json");
+        try {
+            startActivityForResult(intent, REQUEST_EXPORT_SETTINGS);
+        } catch (RuntimeException e) {
+            updateStatus("Backup failed.");
+            setLog("Could not open backup destination picker: " + e.getMessage());
+        }
+    }
+
+    private void importSettingsBackup() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        try {
+            startActivityForResult(intent, REQUEST_IMPORT_SETTINGS);
+        } catch (RuntimeException e) {
+            updateStatus("Restore failed.");
+            setLog("Could not open settings backup picker: " + e.getMessage());
+        }
+    }
+
+    private void writeSettingsBackup(Uri uri) {
+        setLog("Writing settings backup...");
+        executor.execute(() -> {
+            try (OutputStream outputStream = getContentResolver().openOutputStream(uri)) {
+                if (outputStream == null) {
+                    throw new IOException("Could not open backup destination.");
+                }
+                int count = SettingsBackup.write(this, outputStream);
+                runOnUiThread(() -> {
+                    updateStatus("Settings backed up.");
+                    setLog("Backed up " + count + " settings/profile entries.");
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    updateStatus("Backup failed.");
+                    setLog("Could not write settings backup: " + e.getMessage());
+                });
+            }
+        });
+    }
+
+    private void readSettingsBackup(Uri uri) {
+        setLog("Restoring settings backup...");
+        executor.execute(() -> {
+            try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
+                if (inputStream == null) {
+                    throw new IOException("Could not open settings backup.");
+                }
+                SettingsBackup.RestoreResult result = SettingsBackup.restore(this, inputStream);
+                runOnUiThread(() -> {
+                    refreshDevices();
+                    restoreSettingsControls();
+                    refreshProfiles();
+                    updateStatus("Settings restored.");
+                    setLog("Restored " + result.preferenceCount + " settings/profile entries."
+                            + rootRestoreSummary(result.rootRestoreResult));
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    updateStatus("Restore failed.");
+                    setLog("Could not restore settings backup: " + e.getMessage());
+                });
+            }
+        });
+    }
+
+    private String rootRestoreSummary(SettingsBackup.RootRestoreResult result) {
+        if (result == null) {
+            return "";
+        }
+        StringBuilder summary = new StringBuilder();
+        summary.append("\nRoot restore: ").append(result.message);
+        if (result.attempted && result.rootAvailable) {
+            summary.append("\nRuntime permissions requested: ").append(result.runtimePermissionCount);
+            summary.append("\nBattery exemption requested: ")
+                    .append(result.batteryExemptionAttempted ? "yes" : "no");
+        }
+        if (result.output.length() > 0) {
+            summary.append("\n\n").append(result.output);
+        }
+        return summary.toString();
     }
 
     private void resetBluetoothNow() {
@@ -612,6 +766,12 @@ public final class MainActivity extends Activity {
                 .apply();
     }
 
+    private void saveCurrentUiSettings() {
+        saveSelectedDevice();
+        savePreferredBluetoothTarget();
+        saveNotificationRouteMode();
+    }
+
     private void restoreNotificationRouteMode() {
         if (notificationRouteSpinner == null) {
             return;
@@ -627,12 +787,17 @@ public final class MainActivity extends Activity {
     }
 
     private void restoreSettingsControls() {
+        rootCheckBox.setChecked(prefBoolean(AppPrefs.USE_ROOT, false));
         watchdogCheckBox.setChecked(prefBoolean(AppPrefs.WATCHDOG_MODE, true));
         restoreAfterBootCheckBox.setChecked(prefBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true));
         releaseAfterDisconnectCheckBox.setChecked(prefBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true));
         autoStopCheckBox.setChecked(prefBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false));
         resetBluetoothAfterDisconnectCheckBox.setChecked(prefBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false));
         suppressDuckingCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false));
+        suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
+        muteNotificationsDuringPlaybackCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false));
+        muteNotificationsDuringPlaybackAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false));
+        updateDependentSoundTweakControls();
         preferredTargetEditText.setText(prefString(
                 AppPrefs.CUSTOM_BLUETOOTH_QUERY,
                 prefString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, "")
@@ -640,6 +805,18 @@ public final class MainActivity extends Activity {
         restoreNotificationRouteMode();
         restoreSelectedDevice();
         restoreSelectedBluetoothTarget();
+    }
+
+    private void updateDependentSoundTweakControls() {
+        if (suppressDuckingAlwaysCheckBox != null && suppressDuckingCheckBox != null) {
+            suppressDuckingAlwaysCheckBox.setEnabled(suppressDuckingCheckBox.isChecked());
+        }
+        if (muteNotificationsDuringPlaybackAlwaysCheckBox != null
+                && muteNotificationsDuringPlaybackCheckBox != null) {
+            muteNotificationsDuringPlaybackAlwaysCheckBox.setEnabled(
+                    muteNotificationsDuringPlaybackCheckBox.isChecked()
+            );
+        }
     }
 
     private void refreshProfiles() {

@@ -178,6 +178,24 @@ final class AudioRouteController {
         return rootShell.clearAndroidAutoAudioTweaks(restoreDucking);
     }
 
+    boolean isMediaPlaybackActive() {
+        return audioManager.isMusicActive();
+    }
+
+    int notificationStreamVolume() {
+        return audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
+    }
+
+    void setNotificationStreamVolume(int volume) {
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION);
+        int safeVolume = Math.max(0, Math.min(volume, maxVolume));
+        audioManager.setStreamVolume(
+                AudioManager.STREAM_NOTIFICATION,
+                safeVolume,
+                AudioManager.FLAG_REMOVE_SOUND_AND_VIBRATE
+        );
+    }
+
     boolean isRootAvailable() {
         return rootShell.isAvailable();
     }

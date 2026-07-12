@@ -97,6 +97,9 @@ final class ProfileSettings {
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false);
+        copyProfileBoolean(prefs, editor, safeId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false);
+        copyProfileBoolean(prefs, editor, safeId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false);
+        copyProfileBoolean(prefs, editor, safeId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false);
         editor.putString(ACTIVE_PROFILE_ID, safeId);
         editor.apply();
     }
@@ -113,6 +116,9 @@ final class ProfileSettings {
                 getBoolean(prefs, profileId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false),
                 getString(prefs, profileId, AppPrefs.NOTIFICATION_ROUTE_MODE, AppPrefs.NOTIFICATION_ROUTE_OFF),
                 getBoolean(prefs, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false),
+                getBoolean(prefs, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false),
+                getBoolean(prefs, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false),
+                getBoolean(prefs, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false),
                 profileId
         );
     }
@@ -144,6 +150,9 @@ final class ProfileSettings {
         putProfileBoolean(prefs, editor, profileId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false);
+        putProfileBoolean(prefs, editor, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false);
+        putProfileBoolean(prefs, editor, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false);
+        putProfileBoolean(prefs, editor, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false);
     }
 
     private static void putProfileString(SharedPreferences prefs, SharedPreferences.Editor editor,
@@ -245,12 +254,17 @@ final class ProfileSettings {
         final boolean resetBluetoothAfterAndroidAuto;
         final String notificationRouteMode;
         final boolean suppressNotificationDucking;
+        final boolean suppressNotificationDuckingAlways;
+        final boolean muteNotificationsDuringPlayback;
+        final boolean muteNotificationsDuringPlaybackAlways;
         final String profileId;
 
         MonitorSettings(String selectedDeviceKey, String preferredBluetoothTarget, boolean watchdogMode,
                         boolean autoStopAfterAndroidAuto, boolean releaseAfterAndroidAuto,
                         boolean resetBluetoothAfterAndroidAuto, String notificationRouteMode,
-                        boolean suppressNotificationDucking, String profileId) {
+                        boolean suppressNotificationDucking, boolean suppressNotificationDuckingAlways,
+                        boolean muteNotificationsDuringPlayback,
+                        boolean muteNotificationsDuringPlaybackAlways, String profileId) {
             this.selectedDeviceKey = selectedDeviceKey;
             this.preferredBluetoothTarget = preferredBluetoothTarget;
             this.watchdogMode = watchdogMode;
@@ -261,6 +275,9 @@ final class ProfileSettings {
                     ? AppPrefs.NOTIFICATION_ROUTE_OFF
                     : notificationRouteMode;
             this.suppressNotificationDucking = suppressNotificationDucking;
+            this.suppressNotificationDuckingAlways = suppressNotificationDuckingAlways;
+            this.muteNotificationsDuringPlayback = muteNotificationsDuringPlayback;
+            this.muteNotificationsDuringPlaybackAlways = muteNotificationsDuringPlaybackAlways;
             this.profileId = profileId;
         }
     }

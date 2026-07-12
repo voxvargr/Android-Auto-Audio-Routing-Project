@@ -37,6 +37,8 @@ public final class RoutingMonitorService extends Service {
     private boolean bluetoothResetAfterDisconnect;
     private String activeAudioTweakKey;
     private boolean audioTweakDuckingActive;
+    private boolean notificationPlaybackMuteActive;
+    private int notificationPlaybackRestoreVolume = -1;
     private long lastAutoLogAt;
     private long lastRootSnapshotAt;
     private boolean rootSnapshotRunning;
@@ -98,6 +100,7 @@ public final class RoutingMonitorService extends Service {
     private long applyFromPrefs() {
         ProfileSettings.MonitorSettings settings = ProfileSettings.monitorSettings(this, null);
         AndroidAutoConnection activeConnection = AndroidAutoConnection.fallback();
+        boolean androidAutoActive = false;
 
         if (settings.watchdogMode) {
             boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
@@ -123,7 +126,9 @@ public final class RoutingMonitorService extends Service {
                         androidAutoMisses = 0;
                     }
                 }
-                return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
+                applyAudioTweaksIfNeeded(settings, false);
+                updateNotificationPlaybackMute(settings, false);
+                return idleDelayFor(settings, false);
             }
 
             AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
@@ -137,22 +142,27 @@ public final class RoutingMonitorService extends Service {
             androidAutoSeen = true;
             androidAutoMisses = 0;
             routeReleasedAfterDisconnect = false;
+            androidAutoActive = true;
             autoLogState("aa_active", settings, connection, true, null, null);
             maybeLogRootSnapshot("aa_active");
-            applyAudioTweaksIfNeeded(settings);
+            applyAudioTweaksIfNeeded(settings, true);
+            updateNotificationPlaybackMute(settings, true);
+        } else {
+            applyAudioTweaksIfNeeded(settings, false);
+            updateNotificationPlaybackMute(settings, false);
         }
 
         if (settings.watchdogMode && !hasPreferredTarget(settings.preferredBluetoothTarget)) {
             releaseActiveTargetRouteIfNeeded(settings.releaseAfterAndroidAuto);
             autoLogState("missing_preferred_target", settings, activeConnection, true, false, null);
-            return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
+            return idleDelayFor(settings, androidAutoActive);
         }
 
         boolean targetConnected = controller.isPreferredBluetoothTargetConnected(settings.preferredBluetoothTarget);
         if (settings.watchdogMode && !targetConnected) {
             releaseActiveTargetRouteIfNeeded(settings.releaseAfterAndroidAuto);
             autoLogState("target_not_connected", settings, activeConnection, true, false, null);
-            return ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
+            return idleDelayFor(settings, androidAutoActive);
         }
 
         AudioRouteController.RoutingResult result = controller.maintainPreferredRoute(
@@ -179,18 +189,25 @@ public final class RoutingMonitorService extends Service {
         }
     }
 
-    private void applyAudioTweaksIfNeeded(ProfileSettings.MonitorSettings settings) {
+    private void applyAudioTweaksIfNeeded(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        String notificationRouteMode = androidAutoActive
+                ? settings.notificationRouteMode
+                : AppPrefs.NOTIFICATION_ROUTE_OFF;
+        boolean suppressDucking = settings.suppressNotificationDucking
+                && (androidAutoActive || settings.suppressNotificationDuckingAlways);
         String tweakKey = settings.profileId
                 + "|"
-                + settings.notificationRouteMode
+                + androidAutoActive
                 + "|"
-                + settings.suppressNotificationDucking
+                + notificationRouteMode
+                + "|"
+                + suppressDucking
                 + "|"
                 + settings.selectedDeviceKey
                 + "|"
                 + settings.preferredBluetoothTarget;
-        boolean hasTweaks = !AppPrefs.NOTIFICATION_ROUTE_OFF.equals(settings.notificationRouteMode)
-                || settings.suppressNotificationDucking;
+        boolean hasTweaks = !AppPrefs.NOTIFICATION_ROUTE_OFF.equals(notificationRouteMode)
+                || suppressDucking;
         if (!hasTweaks) {
             clearAudioTweaksIfNeeded();
             return;
@@ -200,16 +217,17 @@ public final class RoutingMonitorService extends Service {
         }
         clearAudioTweaksIfNeeded();
         activeAudioTweakKey = tweakKey;
-        audioTweakDuckingActive = settings.suppressNotificationDucking;
-        autoLog("applying audio tweaks notificationRoute=" + settings.notificationRouteMode
-                + " suppressDucking=" + settings.suppressNotificationDucking
+        audioTweakDuckingActive = suppressDucking;
+        autoLog("applying audio tweaks notificationRoute=" + notificationRouteMode
+                + " suppressDucking=" + suppressDucking
+                + " androidAutoActive=" + androidAutoActive
                 + " selected=" + settings.selectedDeviceKey
                 + " target=" + settings.preferredBluetoothTarget);
         new Thread(() -> controller.applyAndroidAutoAudioTweaks(
-                settings.notificationRouteMode,
+                notificationRouteMode,
                 settings.selectedDeviceKey,
                 settings.preferredBluetoothTarget,
-                settings.suppressNotificationDucking
+                suppressDucking
         ), "aaarp-audio-tweaks").start();
     }
 
@@ -222,6 +240,76 @@ public final class RoutingMonitorService extends Service {
         audioTweakDuckingActive = false;
         autoLog("clearing audio tweaks restoreDucking=" + restoreDucking);
         new Thread(() -> controller.clearAndroidAutoAudioTweaks(restoreDucking), "aaarp-audio-tweaks-clear").start();
+    }
+
+    private void updateNotificationPlaybackMute(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        if (!shouldMuteNotificationsDuringPlayback(settings, androidAutoActive)) {
+            clearNotificationPlaybackMuteIfNeeded();
+            return;
+        }
+
+        boolean playbackActive;
+        try {
+            playbackActive = controller.isMediaPlaybackActive();
+        } catch (RuntimeException e) {
+            autoLog("playback state check failed: " + e.getMessage());
+            return;
+        }
+
+        if (playbackActive) {
+            muteNotificationsForPlaybackIfNeeded(androidAutoActive);
+        } else {
+            clearNotificationPlaybackMuteIfNeeded();
+        }
+    }
+
+    private boolean shouldMuteNotificationsDuringPlayback(ProfileSettings.MonitorSettings settings,
+                                                          boolean androidAutoActive) {
+        return settings.muteNotificationsDuringPlayback
+                && (androidAutoActive || settings.muteNotificationsDuringPlaybackAlways);
+    }
+
+    private long idleDelayFor(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        return shouldMuteNotificationsDuringPlayback(settings, androidAutoActive)
+                ? ROUTE_CHECK_INTERVAL_MS
+                : ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
+    }
+
+    private void muteNotificationsForPlaybackIfNeeded(boolean androidAutoActive) {
+        try {
+            int currentVolume = controller.notificationStreamVolume();
+            if (!notificationPlaybackMuteActive) {
+                notificationPlaybackRestoreVolume = currentVolume;
+            }
+            if (currentVolume != 0) {
+                controller.setNotificationStreamVolume(0);
+            }
+            if (!notificationPlaybackMuteActive) {
+                notificationPlaybackMuteActive = true;
+                autoLog("notification stream muted during playback restoreVolume="
+                        + notificationPlaybackRestoreVolume
+                        + " androidAutoActive=" + androidAutoActive);
+            }
+        } catch (RuntimeException e) {
+            autoLog("notification stream mute failed: " + e.getMessage());
+        }
+    }
+
+    private void clearNotificationPlaybackMuteIfNeeded() {
+        if (!notificationPlaybackMuteActive) {
+            return;
+        }
+        int restoreVolume = notificationPlaybackRestoreVolume;
+        notificationPlaybackMuteActive = false;
+        notificationPlaybackRestoreVolume = -1;
+        try {
+            if (restoreVolume >= 0) {
+                controller.setNotificationStreamVolume(restoreVolume);
+            }
+            autoLog("notification stream restored after playback restoreVolume=" + restoreVolume);
+        } catch (RuntimeException e) {
+            autoLog("notification stream restore failed: " + e.getMessage());
+        }
     }
 
     private void resetBluetoothAfterDisconnectIfNeeded(boolean resetBluetoothAfterDisconnect) {
@@ -244,6 +332,7 @@ public final class RoutingMonitorService extends Service {
 
     private void releaseRouteOnStopIfEnabled() {
         clearAudioTweaksIfNeeded();
+        clearNotificationPlaybackMuteIfNeeded();
         SharedPreferences prefs = AppPrefs.get(this);
         if (prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true)) {
             controller.clearRoute();
@@ -265,6 +354,10 @@ public final class RoutingMonitorService extends Service {
                 + " currentRoute=" + controller.currentCommunicationDevice()
                 + " notificationRoute=" + settings.notificationRouteMode
                 + " suppressDucking=" + settings.suppressNotificationDucking
+                + " suppressDuckingAlways=" + settings.suppressNotificationDuckingAlways
+                + " mutePlayback=" + settings.muteNotificationsDuringPlayback
+                + " mutePlaybackAlways=" + settings.muteNotificationsDuringPlaybackAlways
+                + " muteActive=" + notificationPlaybackMuteActive
                 + " preferredTarget=" + settings.preferredBluetoothTarget
                 + " selected=" + settings.selectedDeviceKey;
         boolean changed = !summary.equals(lastAutoLogSummary);
