@@ -37,10 +37,15 @@ public final class RoutingMonitorService extends Service {
     private boolean bluetoothResetAfterDisconnect;
     private String activeAudioTweakKey;
     private boolean audioTweakDuckingActive;
+    private boolean audioTweakNotificationRouteActive;
+    private boolean audioTweakMediaRouteActive;
     private boolean notificationPlaybackMuteActive;
+    private boolean notificationPlaybackMuteOwned;
     private int notificationPlaybackRestoreVolume = -1;
     private long lastAutoLogAt;
     private long lastRootSnapshotAt;
+    private long lastMediaPinPulseLogAt;
+    private String lastMediaPinPulseSummary;
     private boolean rootSnapshotRunning;
     private String lastAutoLogSummary;
     private final Runnable applyLoop = new Runnable() {
@@ -89,6 +94,8 @@ public final class RoutingMonitorService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(applyLoop);
+        clearAudioTweaksIfNeeded();
+        clearNotificationPlaybackMuteIfNeeded();
         super.onDestroy();
     }
 
@@ -147,6 +154,7 @@ public final class RoutingMonitorService extends Service {
             maybeLogRootSnapshot("aa_active");
             applyAudioTweaksIfNeeded(settings, true);
             updateNotificationPlaybackMute(settings, true);
+            reassertPinnedMediaIfNeeded(settings, true);
         } else {
             applyAudioTweaksIfNeeded(settings, false);
             updateNotificationPlaybackMute(settings, false);
@@ -165,6 +173,30 @@ public final class RoutingMonitorService extends Service {
             return idleDelayFor(settings, androidAutoActive);
         }
 
+        if (shouldSkipGenericBluetoothScoFallback(settings)) {
+            pauseBluetoothScoRouteForMediaIfNeeded();
+            autoLogState("route_skipped_generic_sco", settings, activeConnection, true, targetConnected,
+                    "Android only exposed a generic Bluetooth SCO route for the saved Bluetooth target.\n"
+                            + "AAARP skipped that call-quality route because no phone-call audio mode is active.\n"
+                            + "Selected route: " + controller.selectedRouteDetail(
+                            settings.selectedDeviceKey,
+                            settings.preferredBluetoothTarget
+                    ) + '\n');
+            return ROUTE_CHECK_INTERVAL_MS;
+        }
+
+        if (shouldPauseBluetoothScoForMedia(settings)) {
+            pauseBluetoothScoRouteForMediaIfNeeded();
+            autoLogState("route_paused_for_media", settings, activeConnection, true, targetConnected,
+                    "Media playback is active and the selected communication route is Bluetooth SCO.\n"
+                            + "AAARP left the normal media audio path alone.\n"
+                            + "Selected route: " + controller.selectedRouteDetail(
+                            settings.selectedDeviceKey,
+                            settings.preferredBluetoothTarget
+                    ) + '\n');
+            return ROUTE_CHECK_INTERVAL_MS;
+        }
+
         AudioRouteController.RoutingResult result = controller.maintainPreferredRoute(
                 settings.selectedDeviceKey,
                 settings.preferredBluetoothTarget
@@ -175,6 +207,45 @@ public final class RoutingMonitorService extends Service {
         }
         autoLogState("route_check", settings, activeConnection, true, targetConnected, result.log);
         return ROUTE_CHECK_INTERVAL_MS;
+    }
+
+    private boolean shouldSkipGenericBluetoothScoFallback(ProfileSettings.MonitorSettings settings) {
+        if (!settings.pauseBluetoothScoDuringMedia) {
+            return false;
+        }
+        try {
+            return controller.selectedRouteIsUnmatchedBluetoothScoFallback(
+                    settings.selectedDeviceKey,
+                    settings.preferredBluetoothTarget
+            ) && !controller.isInCallAudioMode();
+        } catch (RuntimeException e) {
+            autoLog("Bluetooth SCO fallback guard failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean shouldPauseBluetoothScoForMedia(ProfileSettings.MonitorSettings settings) {
+        if (!settings.pauseBluetoothScoDuringMedia) {
+            return false;
+        }
+        try {
+            return controller.isMediaPlaybackActive()
+                    && controller.selectedRouteIsBluetoothSco(
+                    settings.selectedDeviceKey,
+                    settings.preferredBluetoothTarget
+            );
+        } catch (RuntimeException e) {
+            autoLog("Bluetooth SCO media guard failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void pauseBluetoothScoRouteForMediaIfNeeded() {
+        if (routeActiveForTarget || controller.isCurrentCommunicationRouteBluetoothSco()) {
+            controller.clearRoute();
+            routeActiveForTarget = false;
+            autoLog("Bluetooth SCO route paused during media playback");
+        }
     }
 
     private boolean hasPreferredTarget(String preferredBluetoothTarget) {
@@ -195,6 +266,7 @@ public final class RoutingMonitorService extends Service {
                 : AppPrefs.NOTIFICATION_ROUTE_OFF;
         boolean suppressDucking = settings.suppressNotificationDucking
                 && (androidAutoActive || settings.suppressNotificationDuckingAlways);
+        boolean pinMediaToBluetooth = androidAutoActive && settings.pinMediaToBluetoothDuringAndroidAuto;
         String tweakKey = settings.profileId
                 + "|"
                 + androidAutoActive
@@ -203,11 +275,14 @@ public final class RoutingMonitorService extends Service {
                 + "|"
                 + suppressDucking
                 + "|"
+                + pinMediaToBluetooth
+                + "|"
                 + settings.selectedDeviceKey
                 + "|"
                 + settings.preferredBluetoothTarget;
         boolean hasTweaks = !AppPrefs.NOTIFICATION_ROUTE_OFF.equals(notificationRouteMode)
-                || suppressDucking;
+                || suppressDucking
+                || pinMediaToBluetooth;
         if (!hasTweaks) {
             clearAudioTweaksIfNeeded();
             return;
@@ -218,8 +293,11 @@ public final class RoutingMonitorService extends Service {
         clearAudioTweaksIfNeeded();
         activeAudioTweakKey = tweakKey;
         audioTweakDuckingActive = suppressDucking;
+        audioTweakNotificationRouteActive = !AppPrefs.NOTIFICATION_ROUTE_OFF.equals(notificationRouteMode);
+        audioTweakMediaRouteActive = pinMediaToBluetooth;
         autoLog("applying audio tweaks notificationRoute=" + notificationRouteMode
                 + " suppressDucking=" + suppressDucking
+                + " pinMediaToBluetooth=" + pinMediaToBluetooth
                 + " androidAutoActive=" + androidAutoActive
                 + " selected=" + settings.selectedDeviceKey
                 + " target=" + settings.preferredBluetoothTarget);
@@ -227,19 +305,60 @@ public final class RoutingMonitorService extends Service {
                 notificationRouteMode,
                 settings.selectedDeviceKey,
                 settings.preferredBluetoothTarget,
-                suppressDucking
+                suppressDucking,
+                pinMediaToBluetooth
         ), "aaarp-audio-tweaks").start();
     }
 
     private void clearAudioTweaksIfNeeded() {
-        if (activeAudioTweakKey == null && !audioTweakDuckingActive) {
+        if (activeAudioTweakKey == null
+                && !audioTweakDuckingActive
+                && !audioTweakNotificationRouteActive
+                && !audioTweakMediaRouteActive) {
             return;
         }
         boolean restoreDucking = audioTweakDuckingActive;
+        boolean clearNotificationRoute = audioTweakNotificationRouteActive;
+        boolean clearMediaRoute = audioTweakMediaRouteActive;
         activeAudioTweakKey = null;
         audioTweakDuckingActive = false;
-        autoLog("clearing audio tweaks restoreDucking=" + restoreDucking);
-        new Thread(() -> controller.clearAndroidAutoAudioTweaks(restoreDucking), "aaarp-audio-tweaks-clear").start();
+        audioTweakNotificationRouteActive = false;
+        audioTweakMediaRouteActive = false;
+        autoLog("clearing audio tweaks restoreDucking=" + restoreDucking
+                + " clearNotificationRoute=" + clearNotificationRoute
+                + " clearMediaRoute=" + clearMediaRoute);
+        new Thread(() -> controller.clearAndroidAutoAudioTweaks(
+                restoreDucking,
+                clearNotificationRoute,
+                clearMediaRoute
+        ), "aaarp-audio-tweaks-clear").start();
+    }
+
+    private void reassertPinnedMediaIfNeeded(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        if (!androidAutoActive || !settings.pinMediaToBluetoothDuringAndroidAuto) {
+            return;
+        }
+        try {
+            String result = controller.reassertBluetoothMediaPath(
+                    settings.selectedDeviceKey,
+                    settings.preferredBluetoothTarget
+            );
+            long now = System.currentTimeMillis();
+            boolean changed = !result.equals(lastMediaPinPulseSummary);
+            if (changed || now - lastMediaPinPulseLogAt >= AUTO_LOG_HEARTBEAT_MS) {
+                lastMediaPinPulseSummary = result;
+                lastMediaPinPulseLogAt = now;
+                autoLog("media pin pulse " + result);
+            }
+        } catch (RuntimeException e) {
+            long now = System.currentTimeMillis();
+            String result = "failed: " + e.getMessage();
+            if (!result.equals(lastMediaPinPulseSummary) || now - lastMediaPinPulseLogAt >= AUTO_LOG_HEARTBEAT_MS) {
+                lastMediaPinPulseSummary = result;
+                lastMediaPinPulseLogAt = now;
+                autoLog("media pin pulse " + result);
+            }
+        }
     }
 
     private void updateNotificationPlaybackMute(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
@@ -279,16 +398,25 @@ public final class RoutingMonitorService extends Service {
         try {
             int currentVolume = controller.notificationStreamVolume();
             if (!notificationPlaybackMuteActive) {
-                notificationPlaybackRestoreVolume = currentVolume;
-            }
-            if (currentVolume != 0) {
-                controller.setNotificationStreamVolume(0);
-            }
-            if (!notificationPlaybackMuteActive) {
                 notificationPlaybackMuteActive = true;
+                if (currentVolume == 0) {
+                    notificationPlaybackMuteOwned = false;
+                    notificationPlaybackRestoreVolume = -1;
+                    autoLog("notification stream already muted during playback; leaving ownership to another app"
+                            + " androidAutoActive=" + androidAutoActive);
+                    return;
+                }
+                notificationPlaybackMuteOwned = true;
+                notificationPlaybackRestoreVolume = currentVolume;
+                controller.setNotificationStreamVolume(0);
                 autoLog("notification stream muted during playback restoreVolume="
                         + notificationPlaybackRestoreVolume
                         + " androidAutoActive=" + androidAutoActive);
+                return;
+            }
+            if (notificationPlaybackMuteOwned && currentVolume != 0) {
+                controller.setNotificationStreamVolume(0);
+                autoLog("notification stream re-muted during playback currentVolume=" + currentVolume);
             }
         } catch (RuntimeException e) {
             autoLog("notification stream mute failed: " + e.getMessage());
@@ -300,13 +428,21 @@ public final class RoutingMonitorService extends Service {
             return;
         }
         int restoreVolume = notificationPlaybackRestoreVolume;
+        boolean restoreOwned = notificationPlaybackMuteOwned;
         notificationPlaybackMuteActive = false;
+        notificationPlaybackMuteOwned = false;
         notificationPlaybackRestoreVolume = -1;
         try {
-            if (restoreVolume >= 0) {
+            int currentVolume = controller.notificationStreamVolume();
+            if (restoreOwned && restoreVolume >= 0 && currentVolume == 0) {
                 controller.setNotificationStreamVolume(restoreVolume);
+                autoLog("notification stream restored after playback restoreVolume=" + restoreVolume);
+            } else {
+                autoLog("notification stream mute ended without restore owned="
+                        + restoreOwned
+                        + " restoreVolume=" + restoreVolume
+                        + " currentVolume=" + currentVolume);
             }
-            autoLog("notification stream restored after playback restoreVolume=" + restoreVolume);
         } catch (RuntimeException e) {
             autoLog("notification stream restore failed: " + e.getMessage());
         }
@@ -352,12 +488,15 @@ public final class RoutingMonitorService extends Service {
                 + " targetConnected=" + value(targetConnected)
                 + " routeActive=" + routeActiveForTarget
                 + " currentRoute=" + controller.currentCommunicationDevice()
+                + " pauseScoForMedia=" + settings.pauseBluetoothScoDuringMedia
+                + " pinMediaToBluetooth=" + settings.pinMediaToBluetoothDuringAndroidAuto
                 + " notificationRoute=" + settings.notificationRouteMode
                 + " suppressDucking=" + settings.suppressNotificationDucking
                 + " suppressDuckingAlways=" + settings.suppressNotificationDuckingAlways
                 + " mutePlayback=" + settings.muteNotificationsDuringPlayback
                 + " mutePlaybackAlways=" + settings.muteNotificationsDuringPlaybackAlways
                 + " muteActive=" + notificationPlaybackMuteActive
+                + " muteOwned=" + notificationPlaybackMuteOwned
                 + " preferredTarget=" + settings.preferredBluetoothTarget
                 + " selected=" + settings.selectedDeviceKey;
         boolean changed = !summary.equals(lastAutoLogSummary);

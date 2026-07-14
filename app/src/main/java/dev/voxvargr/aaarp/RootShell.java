@@ -172,20 +172,34 @@ final class RootShell {
         return run(command.toString(), 10000);
     }
 
-    ShellResult applyAndroidAutoAudioTweaks(boolean routeNotifications, int audioSystemDevice,
-                                            String address, boolean suppressDucking) {
+    ShellResult applyAndroidAutoAudioTweaks(boolean routeNotifications, int notificationDevice,
+                                            String notificationAddress, boolean suppressDucking,
+                                            boolean routeMedia, int mediaDevice, String mediaAddress) {
         StringBuilder command = new StringBuilder();
         command.append("echo '--- AAARP Android Auto audio tweaks ---'; ");
-        appendStrategyIds(command);
         if (routeNotifications) {
-            command.append("echo 'Notification route device: ").append(audioSystemDevice).append("'; ");
-            command.append("for ID in $AAARP_STRATEGY_IDS; do ");
+            appendStrategyIds(command, "AAARP_NOTIFICATION_STRATEGY_IDS", "SONIFICATION", "5", "Notification");
+            command.append("echo 'Notification route device: ").append(notificationDevice).append("'; ");
+            command.append("for ID in $AAARP_NOTIFICATION_STRATEGY_IDS; do ");
             command.append("cmd audio set-device-role-for-strategy \"$ID\" 1 ")
-                    .append(audioSystemDevice)
+                    .append(notificationDevice)
                     .append(" ")
-                    .append(shellQuote(address))
+                    .append(shellQuote(notificationAddress))
                     .append(" 2>&1 || true; ");
             command.append("done; ");
+        }
+        if (routeMedia) {
+            appendStrategyIds(command, "AAARP_MEDIA_STRATEGY_IDS", "STRATEGY_MEDIA", "5", "Media");
+            command.append("echo 'Media route device: ").append(mediaDevice).append("'; ");
+            command.append("for ID in $AAARP_MEDIA_STRATEGY_IDS; do ");
+            command.append("cmd audio set-device-role-for-strategy \"$ID\" 1 ")
+                    .append(mediaDevice)
+                    .append(" ")
+                    .append(shellQuote(mediaAddress))
+                    .append(" 2>&1 || true; ");
+            command.append("done; ");
+            command.append("echo 'Blocking Android Auto audio focus while media pin is active'; ");
+            command.append("cmd appops set com.google.android.projection.gearhead TAKE_AUDIO_FOCUS ignore 2>&1 || true; ");
         }
         if (suppressDucking) {
             command.append("echo 'Suppressing SystemUI audio focus while Android Auto is active'; ");
@@ -194,26 +208,41 @@ final class RootShell {
         return run(command.toString(), 8000);
     }
 
-    ShellResult clearAndroidAutoAudioTweaks(boolean restoreDucking) {
+    ShellResult clearAndroidAutoAudioTweaks(boolean restoreDucking, boolean clearNotificationRoute,
+                                            boolean clearMediaRoute) {
         StringBuilder command = new StringBuilder();
         command.append("echo '--- AAARP clearing Android Auto audio tweaks ---'; ");
-        appendStrategyIds(command);
-        command.append("for ID in $AAARP_STRATEGY_IDS; do ");
-        command.append("cmd audio clear-device-role-for-strategy \"$ID\" 1 2>&1 || true; ");
-        command.append("done; ");
+        if (clearNotificationRoute) {
+            appendStrategyIds(command, "AAARP_NOTIFICATION_STRATEGY_IDS", "SONIFICATION", "5", "Notification");
+            command.append("for ID in $AAARP_NOTIFICATION_STRATEGY_IDS; do ");
+            command.append("cmd audio clear-device-role-for-strategy \"$ID\" 1 2>&1 || true; ");
+            command.append("done; ");
+        }
+        if (clearMediaRoute) {
+            appendStrategyIds(command, "AAARP_MEDIA_STRATEGY_IDS", "STRATEGY_MEDIA", "5", "Media");
+            command.append("for ID in $AAARP_MEDIA_STRATEGY_IDS; do ");
+            command.append("cmd audio clear-device-role-for-strategy \"$ID\" 1 2>&1 || true; ");
+            command.append("done; ");
+            command.append("cmd appops set com.google.android.projection.gearhead TAKE_AUDIO_FOCUS allow 2>&1 || true; ");
+        }
         if (restoreDucking) {
             command.append("cmd appops set com.android.systemui TAKE_AUDIO_FOCUS allow 2>&1 || true; ");
         }
         return run(command.toString(), 8000);
     }
 
-    private void appendStrategyIds(StringBuilder command) {
-        command.append("AAARP_STRATEGY_IDS=\"$(dumpsys media.audio_policy 2>/dev/null ")
-                .append("| grep -i 'SONIFICATION' ")
+    private void appendStrategyIds(StringBuilder command, String variableName, String grepPattern,
+                                   String fallbackId, String label) {
+        command.append(variableName).append("=\"$(dumpsys media.audio_policy 2>/dev/null ")
+                .append("| grep -i ")
+                .append(shellQuote(grepPattern))
+                .append(" ")
                 .append("| sed -n 's/.*id[:= ]*\\([0-9][0-9]*\\).*/\\1/p' ")
                 .append("| tr '\\n' ' ')\"; ");
-        command.append("[ -n \"$AAARP_STRATEGY_IDS\" ] || AAARP_STRATEGY_IDS=\"5\"; ");
-        command.append("echo \"Audio strategy ids: $AAARP_STRATEGY_IDS\"; ");
+        command.append("[ -n \"$").append(variableName).append("\" ] || ")
+                .append(variableName).append("=\"").append(fallbackId).append("\"; ");
+        command.append("echo \"").append(label).append(" strategy ids: $")
+                .append(variableName).append("\"; ");
     }
 
     private String shellQuote(String value) {

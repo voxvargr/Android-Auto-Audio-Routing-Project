@@ -44,6 +44,37 @@ final class ProfileSettings {
         AppPrefs.get(context).edit().putString(ACTIVE_PROFILE_ID, cleanProfileId(profileId)).apply();
     }
 
+    static void saveActiveString(Context context, String key, String value) {
+        String safeValue = value == null ? "" : value;
+        SharedPreferences prefs = AppPrefs.get(context);
+        String activeId = activeProfileId(context);
+        SharedPreferences.Editor editor = prefs.edit().putString(key, safeValue);
+        if (!DEFAULT_PROFILE_ID.equals(activeId)) {
+            editor.putString(profileKey(activeId, key), safeValue);
+        }
+        editor.apply();
+    }
+
+    static void removeActiveString(Context context, String key) {
+        SharedPreferences prefs = AppPrefs.get(context);
+        String activeId = activeProfileId(context);
+        SharedPreferences.Editor editor = prefs.edit().remove(key);
+        if (!DEFAULT_PROFILE_ID.equals(activeId)) {
+            editor.remove(profileKey(activeId, key));
+        }
+        editor.apply();
+    }
+
+    static void saveActiveBoolean(Context context, String key, boolean value) {
+        SharedPreferences prefs = AppPrefs.get(context);
+        String activeId = activeProfileId(context);
+        SharedPreferences.Editor editor = prefs.edit().putBoolean(key, value);
+        if (!DEFAULT_PROFILE_ID.equals(activeId)) {
+            editor.putBoolean(profileKey(activeId, key), value);
+        }
+        editor.apply();
+    }
+
     static ProfileEntry saveCurrentSettingsForConnection(Context context, AndroidAutoConnection connection) {
         AndroidAutoConnection safeConnection = connection == null ? AndroidAutoConnection.fallback() : connection;
         String profileId = safeConnection.specific() ? safeConnection.key() : DEFAULT_PROFILE_ID;
@@ -96,6 +127,8 @@ final class ProfileSettings {
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
+        copyProfileBoolean(prefs, editor, safeId, AppPrefs.PAUSE_BLUETOOTH_SCO_DURING_MEDIA, true);
+        copyProfileBoolean(prefs, editor, safeId, AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false);
@@ -114,6 +147,8 @@ final class ProfileSettings {
                 getBoolean(prefs, profileId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false),
                 getBoolean(prefs, profileId, AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true),
                 getBoolean(prefs, profileId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false),
+                getBoolean(prefs, profileId, AppPrefs.PAUSE_BLUETOOTH_SCO_DURING_MEDIA, true),
+                getBoolean(prefs, profileId, AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, false),
                 getString(prefs, profileId, AppPrefs.NOTIFICATION_ROUTE_MODE, AppPrefs.NOTIFICATION_ROUTE_OFF),
                 getBoolean(prefs, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false),
                 getBoolean(prefs, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false),
@@ -149,6 +184,8 @@ final class ProfileSettings {
         putProfileBoolean(prefs, editor, profileId, AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
+        putProfileBoolean(prefs, editor, profileId, AppPrefs.PAUSE_BLUETOOTH_SCO_DURING_MEDIA, true);
+        putProfileBoolean(prefs, editor, profileId, AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false);
@@ -252,6 +289,8 @@ final class ProfileSettings {
         final boolean autoStopAfterAndroidAuto;
         final boolean releaseAfterAndroidAuto;
         final boolean resetBluetoothAfterAndroidAuto;
+        final boolean pauseBluetoothScoDuringMedia;
+        final boolean pinMediaToBluetoothDuringAndroidAuto;
         final String notificationRouteMode;
         final boolean suppressNotificationDucking;
         final boolean suppressNotificationDuckingAlways;
@@ -261,7 +300,9 @@ final class ProfileSettings {
 
         MonitorSettings(String selectedDeviceKey, String preferredBluetoothTarget, boolean watchdogMode,
                         boolean autoStopAfterAndroidAuto, boolean releaseAfterAndroidAuto,
-                        boolean resetBluetoothAfterAndroidAuto, String notificationRouteMode,
+                        boolean resetBluetoothAfterAndroidAuto, boolean pauseBluetoothScoDuringMedia,
+                        boolean pinMediaToBluetoothDuringAndroidAuto,
+                        String notificationRouteMode,
                         boolean suppressNotificationDucking, boolean suppressNotificationDuckingAlways,
                         boolean muteNotificationsDuringPlayback,
                         boolean muteNotificationsDuringPlaybackAlways, String profileId) {
@@ -271,6 +312,8 @@ final class ProfileSettings {
             this.autoStopAfterAndroidAuto = autoStopAfterAndroidAuto;
             this.releaseAfterAndroidAuto = releaseAfterAndroidAuto;
             this.resetBluetoothAfterAndroidAuto = resetBluetoothAfterAndroidAuto;
+            this.pauseBluetoothScoDuringMedia = pauseBluetoothScoDuringMedia;
+            this.pinMediaToBluetoothDuringAndroidAuto = pinMediaToBluetoothDuringAndroidAuto;
             this.notificationRouteMode = notificationRouteMode == null
                     ? AppPrefs.NOTIFICATION_ROUTE_OFF
                     : notificationRouteMode;

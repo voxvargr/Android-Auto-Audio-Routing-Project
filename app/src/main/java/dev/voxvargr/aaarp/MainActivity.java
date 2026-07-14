@@ -72,6 +72,8 @@ public final class MainActivity extends Activity {
     private CheckBox releaseAfterDisconnectCheckBox;
     private CheckBox autoStopCheckBox;
     private CheckBox resetBluetoothAfterDisconnectCheckBox;
+    private CheckBox pauseBluetoothScoDuringMediaCheckBox;
+    private CheckBox pinMediaToBluetoothDuringAndroidAutoCheckBox;
     private CheckBox suppressDuckingCheckBox;
     private CheckBox suppressDuckingAlwaysCheckBox;
     private CheckBox muteNotificationsDuringPlaybackCheckBox;
@@ -216,7 +218,7 @@ public final class MainActivity extends Activity {
         watchdogCheckBox.setTextColor(getColor(R.color.aaarp_text));
         watchdogCheckBox.setChecked(prefBoolean(AppPrefs.WATCHDOG_MODE, true));
         watchdogCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.WATCHDOG_MODE, isChecked).apply());
+                saveBooleanSetting(AppPrefs.WATCHDOG_MODE, isChecked));
         content.addView(watchdogCheckBox, blockParams());
 
         restoreAfterBootCheckBox = new CheckBox(this);
@@ -232,7 +234,7 @@ public final class MainActivity extends Activity {
         releaseAfterDisconnectCheckBox.setTextColor(getColor(R.color.aaarp_text));
         releaseAfterDisconnectCheckBox.setChecked(prefBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true));
         releaseAfterDisconnectCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, isChecked).apply());
+                saveBooleanSetting(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, isChecked));
         content.addView(releaseAfterDisconnectCheckBox, blockParams());
 
         autoStopCheckBox = new CheckBox(this);
@@ -240,7 +242,7 @@ public final class MainActivity extends Activity {
         autoStopCheckBox.setTextColor(getColor(R.color.aaarp_text));
         autoStopCheckBox.setChecked(prefBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false));
         autoStopCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, isChecked).apply());
+                saveBooleanSetting(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, isChecked));
         content.addView(autoStopCheckBox, blockParams());
 
         resetBluetoothAfterDisconnectCheckBox = new CheckBox(this);
@@ -248,8 +250,26 @@ public final class MainActivity extends Activity {
         resetBluetoothAfterDisconnectCheckBox.setTextColor(getColor(R.color.aaarp_text));
         resetBluetoothAfterDisconnectCheckBox.setChecked(prefBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false));
         resetBluetoothAfterDisconnectCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, isChecked).apply());
+                saveBooleanSetting(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, isChecked));
         content.addView(resetBluetoothAfterDisconnectCheckBox, blockParams());
+
+        pauseBluetoothScoDuringMediaCheckBox = new CheckBox(this);
+        pauseBluetoothScoDuringMediaCheckBox.setText("Avoid call-quality Bluetooth during media playback");
+        pauseBluetoothScoDuringMediaCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        pauseBluetoothScoDuringMediaCheckBox.setChecked(prefBoolean(AppPrefs.PAUSE_BLUETOOTH_SCO_DURING_MEDIA, true));
+        pauseBluetoothScoDuringMediaCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                saveBooleanSetting(AppPrefs.PAUSE_BLUETOOTH_SCO_DURING_MEDIA, isChecked));
+        content.addView(pauseBluetoothScoDuringMediaCheckBox, blockParams());
+
+        pinMediaToBluetoothDuringAndroidAutoCheckBox = new CheckBox(this);
+        pinMediaToBluetoothDuringAndroidAutoCheckBox.setText("Keep media on Bluetooth during Android Auto");
+        pinMediaToBluetoothDuringAndroidAutoCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        pinMediaToBluetoothDuringAndroidAutoCheckBox.setChecked(
+                prefBoolean(AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, false)
+        );
+        pinMediaToBluetoothDuringAndroidAutoCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                saveBooleanSetting(AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, isChecked));
+        content.addView(pinMediaToBluetoothDuringAndroidAutoCheckBox, blockParams());
 
         TextView notificationRouteLabel = text("Notification sound route during Android Auto", 15, true);
         notificationRouteLabel.setTextColor(getColor(R.color.aaarp_text));
@@ -271,7 +291,7 @@ public final class MainActivity extends Activity {
         suppressDuckingCheckBox.setTextColor(getColor(R.color.aaarp_text));
         suppressDuckingCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false));
         suppressDuckingCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            AppPrefs.get(this).edit().putBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, isChecked).apply();
+            saveBooleanSetting(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, isChecked);
             updateDependentSoundTweakControls();
         });
         content.addView(suppressDuckingCheckBox, blockParams());
@@ -281,7 +301,7 @@ public final class MainActivity extends Activity {
         suppressDuckingAlwaysCheckBox.setTextColor(getColor(R.color.aaarp_text));
         suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
         suppressDuckingAlwaysCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, isChecked).apply());
+                saveBooleanSetting(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, isChecked));
         content.addView(suppressDuckingAlwaysCheckBox, blockParams());
 
         muteNotificationsDuringPlaybackCheckBox = new CheckBox(this);
@@ -289,7 +309,7 @@ public final class MainActivity extends Activity {
         muteNotificationsDuringPlaybackCheckBox.setTextColor(getColor(R.color.aaarp_text));
         muteNotificationsDuringPlaybackCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false));
         muteNotificationsDuringPlaybackCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            AppPrefs.get(this).edit().putBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, isChecked).apply();
+            saveBooleanSetting(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, isChecked);
             updateDependentSoundTweakControls();
         });
         content.addView(muteNotificationsDuringPlaybackCheckBox, blockParams());
@@ -299,7 +319,7 @@ public final class MainActivity extends Activity {
         muteNotificationsDuringPlaybackAlwaysCheckBox.setTextColor(getColor(R.color.aaarp_text));
         muteNotificationsDuringPlaybackAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false));
         muteNotificationsDuringPlaybackAlwaysCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, isChecked).apply());
+                saveBooleanSetting(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, isChecked));
         content.addView(muteNotificationsDuringPlaybackAlwaysCheckBox, blockParams());
         updateDependentSoundTweakControls();
 
@@ -554,32 +574,43 @@ public final class MainActivity extends Activity {
 
     private String buildDiagnosticsReport(RootShell.ShellResult result) {
         List<RouteDevice> snapshotRoutes = controller.listRouteDevices();
+        AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
+        ProfileSettings.MonitorSettings settings = ProfileSettings.monitorSettings(this, connection);
         StringBuilder report = new StringBuilder();
         report.append("AAARP diagnostics\n");
         report.append("Android Auto installed: ").append(AndroidAutoStatus.isInstalled(this) ? "yes" : "no").append('\n');
         report.append("Current communication route: ").append(controller.currentCommunicationDevice()).append('\n');
+        report.append("Active profile: ").append(settings.profileId)
+                .append(" - ").append(connection.label()).append('\n');
         report.append("Watch Android Auto: ")
-                .append(prefBoolean(AppPrefs.WATCHDOG_MODE, true) ? "on" : "off").append('\n');
+                .append(settings.watchdogMode ? "on" : "off").append('\n');
         report.append("Restore monitor after reboot: ")
                 .append(prefBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true) ? "on" : "off").append('\n');
         report.append("Default Bluetooth target: ")
-                .append(prefString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, "none")).append('\n');
+                .append(settings.preferredBluetoothTarget == null
+                        || settings.preferredBluetoothTarget.length() == 0
+                        ? "none"
+                        : settings.preferredBluetoothTarget).append('\n');
         report.append("Release route after Android Auto disconnects: ")
-                .append(prefBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true) ? "on" : "off").append('\n');
+                .append(settings.releaseAfterAndroidAuto ? "on" : "off").append('\n');
         report.append("Auto-stop after Android Auto disconnects: ")
-                .append(prefBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false) ? "on" : "off").append('\n');
+                .append(settings.autoStopAfterAndroidAuto ? "on" : "off").append('\n');
         report.append("Reset Bluetooth after Android Auto disconnects: ")
-                .append(prefBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false) ? "on" : "off").append('\n');
+                .append(settings.resetBluetoothAfterAndroidAuto ? "on" : "off").append('\n');
+        report.append("Avoid call-quality Bluetooth during media playback: ")
+                .append(settings.pauseBluetoothScoDuringMedia ? "on" : "off").append('\n');
+        report.append("Keep media on Bluetooth during Android Auto: ")
+                .append(settings.pinMediaToBluetoothDuringAndroidAuto ? "on" : "off").append('\n');
         report.append("Notification route during Android Auto: ")
-                .append(prefString(AppPrefs.NOTIFICATION_ROUTE_MODE, AppPrefs.NOTIFICATION_ROUTE_OFF)).append('\n');
+                .append(settings.notificationRouteMode).append('\n');
         report.append("Try to stop notification ducking: ")
-                .append(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false) ? "on" : "off").append('\n');
+                .append(settings.suppressNotificationDucking ? "on" : "off").append('\n');
         report.append("Stop notification ducking outside Android Auto: ")
-                .append(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false) ? "on" : "off").append('\n');
+                .append(settings.suppressNotificationDuckingAlways ? "on" : "off").append('\n');
         report.append("Mute notification sounds during playback: ")
-                .append(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false) ? "on" : "off").append('\n');
+                .append(settings.muteNotificationsDuringPlayback ? "on" : "off").append('\n');
         report.append("Mute notification sounds outside Android Auto: ")
-                .append(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false) ? "on" : "off").append('\n');
+                .append(settings.muteNotificationsDuringPlaybackAlways ? "on" : "off").append('\n');
         report.append("Auto log directory: ").append(AutoLogWriter.location(this)).append('\n');
         report.append('\n').append(BluetoothDeviceCatalog.describe(this, snapshotRoutes)).append('\n');
         report.append("\nRoot diagnostics exit code: ").append(result.exitCode).append('\n');
@@ -729,7 +760,7 @@ public final class MainActivity extends Activity {
             return null;
         }
         String key = routeDevices.get(index).key();
-        AppPrefs.get(this).edit().putString(AppPrefs.SELECTED_DEVICE_KEY, key).apply();
+        saveStringSetting(AppPrefs.SELECTED_DEVICE_KEY, key);
         return key;
     }
 
@@ -740,19 +771,19 @@ public final class MainActivity extends Activity {
         if (customTarget.length() > 0) {
             target = target.length() == 0 ? customTarget : target + "|" + customTarget;
         }
-        AppPrefs.get(this).edit().putString(AppPrefs.PREFERRED_BLUETOOTH_QUERY, target).apply();
-        AppPrefs.get(this).edit().putString(AppPrefs.CUSTOM_BLUETOOTH_QUERY, customTarget).apply();
+        saveStringSetting(AppPrefs.PREFERRED_BLUETOOTH_QUERY, target);
+        saveStringSetting(AppPrefs.CUSTOM_BLUETOOTH_QUERY, customTarget);
         return target;
     }
 
     private String selectedBluetoothTargetQuery() {
         int index = bluetoothTargetSpinner == null ? -1 : bluetoothTargetSpinner.getSelectedItemPosition();
         if (index <= 0 || index > bluetoothTargets.size()) {
-            AppPrefs.get(this).edit().remove(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY).apply();
+            removeStringSetting(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY);
             return "";
         }
         BluetoothTarget target = bluetoothTargets.get(index - 1);
-        AppPrefs.get(this).edit().putString(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY, target.key()).apply();
+        saveStringSetting(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY, target.key());
         return target.matchQuery();
     }
 
@@ -761,9 +792,19 @@ public final class MainActivity extends Activity {
         if (index < 0 || index >= NOTIFICATION_ROUTE_VALUES.length) {
             index = 0;
         }
-        AppPrefs.get(this).edit()
-                .putString(AppPrefs.NOTIFICATION_ROUTE_MODE, NOTIFICATION_ROUTE_VALUES[index])
-                .apply();
+        saveStringSetting(AppPrefs.NOTIFICATION_ROUTE_MODE, NOTIFICATION_ROUTE_VALUES[index]);
+    }
+
+    private void saveStringSetting(String key, String value) {
+        ProfileSettings.saveActiveString(this, key, value);
+    }
+
+    private void removeStringSetting(String key) {
+        ProfileSettings.removeActiveString(this, key);
+    }
+
+    private void saveBooleanSetting(String key, boolean value) {
+        ProfileSettings.saveActiveBoolean(this, key, value);
     }
 
     private void saveCurrentUiSettings() {
@@ -793,6 +834,10 @@ public final class MainActivity extends Activity {
         releaseAfterDisconnectCheckBox.setChecked(prefBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true));
         autoStopCheckBox.setChecked(prefBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false));
         resetBluetoothAfterDisconnectCheckBox.setChecked(prefBoolean(AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false));
+        pauseBluetoothScoDuringMediaCheckBox.setChecked(prefBoolean(AppPrefs.PAUSE_BLUETOOTH_SCO_DURING_MEDIA, true));
+        pinMediaToBluetoothDuringAndroidAutoCheckBox.setChecked(
+                prefBoolean(AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, false)
+        );
         suppressDuckingCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false));
         suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
         muteNotificationsDuringPlaybackCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false));

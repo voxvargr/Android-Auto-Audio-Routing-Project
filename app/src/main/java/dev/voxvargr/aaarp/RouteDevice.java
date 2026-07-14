@@ -77,6 +77,17 @@ final class RouteDevice {
                 || type == AudioDeviceInfo.TYPE_BLE_BROADCAST;
     }
 
+    boolean isBluetoothSco() {
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
+    }
+
+    boolean isBluetoothMediaOutput() {
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                || type == AudioDeviceInfo.TYPE_BLE_HEADSET
+                || type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+                || type == AudioDeviceInfo.TYPE_BLE_BROADCAST;
+    }
+
     int audioSystemOutputDevice() {
         switch (type) {
             case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE:

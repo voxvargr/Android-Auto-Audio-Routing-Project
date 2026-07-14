@@ -5,6 +5,7 @@ import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.os.Build;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -162,24 +163,103 @@ final class AudioRouteController {
     RootShell.ShellResult applyAndroidAutoAudioTweaks(String notificationRouteMode,
                                                       String selectedKey,
                                                       String preferredBluetoothTarget,
-                                                      boolean suppressDucking) {
+                                                      boolean suppressDucking,
+                                                      boolean pinMediaToBluetooth) {
         RouteDevice notificationDevice = notificationRouteDevice(
                 notificationRouteMode,
                 selectedKey,
                 preferredBluetoothTarget
         );
         boolean routeNotifications = notificationDevice != null && notificationDevice.audioSystemOutputDevice() != 0;
-        int audioSystemDevice = routeNotifications ? notificationDevice.audioSystemOutputDevice() : 0;
-        String address = routeNotifications ? notificationDevice.address() : "";
-        return rootShell.applyAndroidAutoAudioTweaks(routeNotifications, audioSystemDevice, address, suppressDucking);
+        int notificationAudioSystemDevice = routeNotifications ? notificationDevice.audioSystemOutputDevice() : 0;
+        String notificationAddress = routeNotifications ? notificationDevice.address() : "";
+
+        RouteDevice mediaDevice = mediaRouteDevice(
+                pinMediaToBluetooth,
+                selectedKey,
+                preferredBluetoothTarget
+        );
+        boolean routeMedia = mediaDevice != null && mediaDevice.audioSystemOutputDevice() != 0;
+        int mediaAudioSystemDevice = routeMedia ? mediaDevice.audioSystemOutputDevice() : 0;
+        String mediaAddress = routeMedia ? mediaDevice.address() : "";
+        return rootShell.applyAndroidAutoAudioTweaks(
+                routeNotifications,
+                notificationAudioSystemDevice,
+                notificationAddress,
+                suppressDucking,
+                routeMedia,
+                mediaAudioSystemDevice,
+                mediaAddress
+        );
     }
 
-    RootShell.ShellResult clearAndroidAutoAudioTweaks(boolean restoreDucking) {
-        return rootShell.clearAndroidAutoAudioTweaks(restoreDucking);
+    RootShell.ShellResult clearAndroidAutoAudioTweaks(boolean restoreDucking, boolean clearNotificationRoute,
+                                                      boolean clearMediaRoute) {
+        return rootShell.clearAndroidAutoAudioTweaks(restoreDucking, clearNotificationRoute, clearMediaRoute);
     }
 
     boolean isMediaPlaybackActive() {
         return audioManager.isMusicActive();
+    }
+
+    String reassertBluetoothMediaPath(String selectedKey, String preferredBluetoothTarget) {
+        RouteDevice mediaDevice = mediaRouteDevice(true, selectedKey, preferredBluetoothTarget);
+        if (mediaDevice == null) {
+            return "No Bluetooth media output is currently available for the saved target.";
+        }
+
+        StringBuilder result = new StringBuilder();
+        result.append("target=").append(mediaDevice.detailLabel());
+        try {
+            audioManager.setParameters("A2dpSuspended=false");
+            result.append(" setParameters(A2dpSuspended=false)=ok");
+        } catch (RuntimeException e) {
+            result.append(" setParameters(A2dpSuspended=false)=").append(shortMessage(e));
+        }
+
+        try {
+            Method method = AudioManager.class.getDeclaredMethod("setBluetoothA2dpOn", boolean.class);
+            method.setAccessible(true);
+            method.invoke(audioManager, true);
+            result.append(" setBluetoothA2dpOn(true)=ok");
+        } catch (Throwable e) {
+            result.append(" setBluetoothA2dpOn(true)=").append(shortMessage(e));
+        }
+        return result.toString();
+    }
+
+    boolean selectedRouteIsBluetoothSco(String selectedKey, String preferredBluetoothTarget) {
+        RouteDevice selected = findSelected(listRouteDevices(), selectedKey, preferredBluetoothTarget);
+        return selected.isBluetoothSco();
+    }
+
+    boolean selectedRouteIsUnmatchedBluetoothScoFallback(String selectedKey, String preferredBluetoothTarget) {
+        if (!hasPreferredTarget(preferredBluetoothTarget)) {
+            return false;
+        }
+        List<RouteDevice> routeDevices = listRouteDevices();
+        if (findBluetoothTarget(routeDevices, preferredBluetoothTarget) != null) {
+            return false;
+        }
+        RouteDevice selected = findSelected(routeDevices, selectedKey, preferredBluetoothTarget);
+        return selected.isBluetoothSco();
+    }
+
+    String selectedRouteDetail(String selectedKey, String preferredBluetoothTarget) {
+        RouteDevice selected = findSelected(listRouteDevices(), selectedKey, preferredBluetoothTarget);
+        return selected.detailLabel();
+    }
+
+    boolean isCurrentCommunicationRouteBluetoothSco() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            return current != null && RouteDevice.from(current).isBluetoothSco();
+        }
+        return isBluetoothScoOn();
+    }
+
+    boolean isInCallAudioMode() {
+        return audioManager.getMode() == AudioManager.MODE_IN_CALL;
     }
 
     int notificationStreamVolume() {
@@ -259,6 +339,27 @@ final class AudioRouteController {
         return null;
     }
 
+    private RouteDevice findBluetoothMediaTarget(List<RouteDevice> devices, String preferredBluetoothTarget) {
+        if (!hasPreferredTarget(preferredBluetoothTarget)) {
+            return null;
+        }
+        for (RouteDevice device : devices) {
+            if (device.isBluetoothMediaOutput() && device.matchesTarget(preferredBluetoothTarget)) {
+                return device;
+            }
+        }
+        return null;
+    }
+
+    private RouteDevice firstBluetoothMediaOutputRoute(List<RouteDevice> devices) {
+        for (RouteDevice device : devices) {
+            if (device.isBluetoothMediaOutput()) {
+                return device;
+            }
+        }
+        return null;
+    }
+
     private RouteDevice notificationRouteDevice(String notificationRouteMode,
                                                 String selectedKey,
                                                 String preferredBluetoothTarget) {
@@ -285,6 +386,25 @@ final class AudioRouteController {
             return firstBluetoothRoute(outputDevices);
         }
         return null;
+    }
+
+    private RouteDevice mediaRouteDevice(boolean pinMediaToBluetooth,
+                                         String selectedKey,
+                                         String preferredBluetoothTarget) {
+        if (!pinMediaToBluetooth) {
+            return null;
+        }
+
+        List<RouteDevice> outputDevices = listOutputDevices();
+        RouteDevice target = findBluetoothMediaTarget(outputDevices, preferredBluetoothTarget);
+        if (target != null) {
+            return target;
+        }
+        RouteDevice selected = findDeviceByKey(outputDevices, selectedKey);
+        if (selected != null && selected.isBluetoothMediaOutput()) {
+            return selected;
+        }
+        return firstBluetoothMediaOutputRoute(outputDevices);
     }
 
     private List<RouteDevice> listOutputDevices() {
@@ -318,6 +438,18 @@ final class AudioRouteController {
 
     private boolean hasPreferredTarget(String preferredBluetoothTarget) {
         return preferredBluetoothTarget != null && preferredBluetoothTarget.trim().length() > 0;
+    }
+
+    private String shortMessage(Throwable throwable) {
+        if (throwable == null) {
+            return "failed";
+        }
+        Throwable cause = throwable.getCause() == null ? throwable : throwable.getCause();
+        String message = cause.getMessage();
+        if (message == null || message.length() == 0) {
+            message = cause.getClass().getSimpleName();
+        }
+        return message.replace('\n', ' ');
     }
 
     private String formatPreferredTarget(String preferredBluetoothTarget) {
