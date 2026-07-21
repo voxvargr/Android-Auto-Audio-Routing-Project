@@ -3,7 +3,14 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateY="1">
+    <path
+        android:fillColor="@color/aaarp_icon_red"
+        android:pathData="M54,6 a48,48 0,1 0,0.1 0z" />
+    <path
+        android:fillColor="@color/aaarp_icon_red_dark"
+        android:fillAlpha="0.22"
+        android:pathData="M9,70 C32,86 66,94 99,82 A48,48 0,0 1,9 70z" />
+    <group android:scaleX="0.9" android:scaleY="0.9" android:translateX="5.5" android:translateY="6">
         <path
             android:fillColor="@android:color/transparent"
             android:pathData="M12,78 L18.5,31 L25,78 M15,61 L22,61"
