@@ -13,6 +13,7 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -61,6 +62,7 @@ public final class MainActivity extends Activity {
     private final List<RouteDevice> routeDevices = new ArrayList<>();
     private final List<BluetoothTarget> bluetoothTargets = new ArrayList<>();
     private AndroidAutoConnection lastDetectedConnection = AndroidAutoConnection.fallback();
+    private boolean suppressProfileSelectionLoad;
     private TextView statusView;
     private TextView currentRouteView;
     private TextView bluetoothInventoryView;
@@ -159,6 +161,23 @@ public final class MainActivity extends Activity {
         profileAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new ArrayList<>());
         profileAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         profileSpinner.setAdapter(profileAdapter);
+        profileSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (suppressProfileSelectionLoad || position < 0 || position >= profileEntries.size()) {
+                    return;
+                }
+                ProfileSettings.ProfileEntry entry = profileEntries.get(position);
+                if (entry.id.equals(ProfileSettings.activeProfileId(MainActivity.this))) {
+                    return;
+                }
+                loadProfile(entry, false);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
         content.addView(profileSpinner, blockParams());
 
         LinearLayout profileRow = buttonRow();
@@ -354,6 +373,10 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshDevices() {
+        refreshDevices(true);
+    }
+
+    private void refreshDevices(boolean showStatus) {
         try {
             routeDevices.clear();
             routeDevices.addAll(controller.listRouteDevices());
@@ -366,7 +389,9 @@ public final class MainActivity extends Activity {
             refreshBluetoothTargets();
             refreshProfiles();
             updateBluetoothInventory();
-            updateStatus("Devices refreshed.");
+            if (showStatus) {
+                updateStatus("Devices refreshed.");
+            }
             updateCurrentRoute();
         } catch (SecurityException e) {
             updateStatus("Bluetooth permission needed.");
@@ -564,12 +589,21 @@ public final class MainActivity extends Activity {
             setLog("No profile selected.");
             return;
         }
+        loadProfile(entry, true);
+    }
+
+    private void loadProfile(ProfileSettings.ProfileEntry entry, boolean showLog) {
+        if (entry == null) {
+            return;
+        }
         ProfileSettings.loadProfileIntoCurrentSettings(this, entry.id);
-        refreshDevices();
+        refreshDevices(false);
         restoreSettingsControls();
         selectProfile(entry.id);
         updateStatus("Profile loaded.");
-        setLog("Loaded profile: " + entry.displayLabel());
+        if (showLog) {
+            setLog("Loaded profile: " + entry.displayLabel());
+        }
     }
 
     private String buildDiagnosticsReport(RootShell.ShellResult result) {
@@ -869,14 +903,19 @@ public final class MainActivity extends Activity {
             return;
         }
         String selectedId = ProfileSettings.activeProfileId(this);
-        profileEntries.clear();
-        profileEntries.addAll(ProfileSettings.listProfiles(this));
-        profileAdapter.clear();
-        for (ProfileSettings.ProfileEntry entry : profileEntries) {
-            profileAdapter.add(entry.displayLabel());
+        suppressProfileSelectionLoad = true;
+        try {
+            profileEntries.clear();
+            profileEntries.addAll(ProfileSettings.listProfiles(this));
+            profileAdapter.clear();
+            for (ProfileSettings.ProfileEntry entry : profileEntries) {
+                profileAdapter.add(entry.displayLabel());
+            }
+            profileAdapter.notifyDataSetChanged();
+            selectProfile(selectedId);
+        } finally {
+            suppressProfileSelectionLoad = false;
         }
-        profileAdapter.notifyDataSetChanged();
-        selectProfile(selectedId);
     }
 
     private void selectProfile(String profileId) {
@@ -888,11 +927,21 @@ public final class MainActivity extends Activity {
         }
         for (int i = 0; i < profileEntries.size(); i++) {
             if (profileId.equals(profileEntries.get(i).id)) {
-                profileSpinner.setSelection(i);
+                setProfileSelection(i);
                 return;
             }
         }
-        profileSpinner.setSelection(0);
+        setProfileSelection(0);
+    }
+
+    private void setProfileSelection(int index) {
+        boolean previous = suppressProfileSelectionLoad;
+        suppressProfileSelectionLoad = true;
+        try {
+            profileSpinner.setSelection(index);
+        } finally {
+            suppressProfileSelectionLoad = previous;
+        }
     }
 
     private ProfileSettings.ProfileEntry selectedProfileEntry() {
@@ -925,6 +974,9 @@ public final class MainActivity extends Activity {
     private void restoreSelectedDevice() {
         String selectedKey = prefString(AppPrefs.SELECTED_DEVICE_KEY, null);
         if (selectedKey == null) {
+            if (!routeDevices.isEmpty()) {
+                deviceSpinner.setSelection(0);
+            }
             return;
         }
         for (int i = 0; i < routeDevices.size(); i++) {
@@ -933,11 +985,15 @@ public final class MainActivity extends Activity {
                 return;
             }
         }
+        if (!routeDevices.isEmpty()) {
+            deviceSpinner.setSelection(0);
+        }
     }
 
     private void restoreSelectedBluetoothTarget() {
         String selectedKey = prefString(AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY, null);
         if (selectedKey == null) {
+            bluetoothTargetSpinner.setSelection(0);
             return;
         }
         for (int i = 0; i < bluetoothTargets.size(); i++) {
@@ -946,6 +1002,7 @@ public final class MainActivity extends Activity {
                 return;
             }
         }
+        bluetoothTargetSpinner.setSelection(0);
     }
 
     private void requestRuntimePermissions() {

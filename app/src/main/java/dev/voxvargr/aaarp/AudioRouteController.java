@@ -379,6 +379,9 @@ final class AudioRouteController {
             if (target != null) {
                 return target;
             }
+            if (hasPreferredTarget(preferredBluetoothTarget)) {
+                return null;
+            }
             RouteDevice selected = findDeviceByKey(outputDevices, selectedKey);
             if (selected != null && selected.isBluetooth()) {
                 return selected;
@@ -399,6 +402,9 @@ final class AudioRouteController {
         RouteDevice target = findBluetoothMediaTarget(outputDevices, preferredBluetoothTarget);
         if (target != null) {
             return target;
+        }
+        if (hasPreferredTarget(preferredBluetoothTarget)) {
+            return null;
         }
         RouteDevice selected = findDeviceByKey(outputDevices, selectedKey);
         if (selected != null && selected.isBluetoothMediaOutput()) {

@@ -111,11 +111,6 @@ final class ProfileSettings {
 
     static void loadProfileIntoCurrentSettings(Context context, String profileId) {
         String safeId = cleanProfileId(profileId);
-        if (DEFAULT_PROFILE_ID.equals(safeId)) {
-            setActiveProfileId(context, DEFAULT_PROFILE_ID);
-            return;
-        }
-
         SharedPreferences prefs = AppPrefs.get(context);
         SharedPreferences.Editor editor = prefs.edit();
         copyProfileString(prefs, editor, safeId, AppPrefs.SELECTED_DEVICE_KEY);
