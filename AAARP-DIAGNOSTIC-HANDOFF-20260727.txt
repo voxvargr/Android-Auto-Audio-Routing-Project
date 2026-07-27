@@ -1,0 +1,302 @@
+AAARP DIAGNOSTIC HANDOFF - 2026-07-27
+=======================================
+
+Purpose
+-------
+This is a handoff for the other development PC. It records the device/log review,
+the most likely cause of the badly distorted phone ringer, the source-sync problem,
+general bugs found, and the recommended repair/verification order.
+
+Nothing was installed on the phone during this review. Do not replace the currently
+installed APK with a build from this checkout until the missing newer source has been
+recovered or recreated.
+
+
+Reviewed state
+--------------
+Repository: Android-Auto-Audio-Routing-Project
+Branch reviewed: main
+Local HEAD: c93ae0f
+Remote origin/main seen during review: c93ae0f
+Latest pull recorded locally: 2026-07-27 around 16:43
+Phone: NX809J, connected through wireless ADB during most of the investigation
+Package: dev.voxvargr.aaarp
+Installed versionName/versionCode: 0.1.0 / 1
+Installed target SDK: 36
+Installed last update time: 2026-07-24 16:59:13
+Attached diagnostic: AAARP-diagnostics-20260727-164147.txt
+
+Installed APK SHA-256:
+757AF6787E47B62543FD2E48C4904C772B111DA613C574C0DA7ADCB3EC389517
+
+APK built from this checkout during review SHA-256:
+E92F0786DEF186B3AC1DAB60E609497D566F32DAB52701CB8FC1469E58C80A81
+
+The hashes are different, and decompilation confirms that this checkout does not
+contain all of the code in the installed APK.
+
+
+CRITICAL: source on GitHub is older than the APK on the phone
+-------------------------------------------------------------
+The phone's installed APK contains newer media-normalization/boost work that is not
+present in this checkout or in origin/main at c93ae0f. The other PC apparently built
+the installed APK on July 24 but did not push all of that source.
+
+Classes/settings confirmed in the installed APK but missing from this checkout include:
+
+* ProfileSettings.MonitorSettings fields:
+  - normalizeMediaDuringAndroidAuto
+  - normalizeMediaAlways
+  - mediaVolumeFloorFallback
+  - mediaDynamicsProcessing
+* AudioRouteController methods including enableMediaBoost and enableDynamicsBoost
+* RoutingMonitorService media-boost/update logic
+
+At minimum, compare/recover the other PC's versions of:
+
+* app/src/main/java/dev/voxvargr/aaarp/AppPrefs.java
+* app/src/main/java/dev/voxvargr/aaarp/ProfileSettings.java
+* app/src/main/java/dev/voxvargr/aaarp/AudioRouteController.java
+* app/src/main/java/dev/voxvargr/aaarp/RoutingMonitorService.java
+* app/src/main/java/dev/voxvargr/aaarp/MainActivity.java
+
+The best recovery is the original uncommitted source from the other PC. The installed
+APK can be used as a behavioral reference/decompilation fallback, but should not be
+treated as a perfect source-code reconstruction.
+
+
+Most likely cause of the terrible ringer
+----------------------------------------
+Confidence: high. The live automatic AAARP log captured the incoming T-Mobile DIGITS
+event even though the attached manual diagnostic did not.
+
+Approximate event timeline on 2026-07-27:
+
+15:49:06  T-Mobile DIGITS gains audio focus and the current communication route changes
+          from the earpiece to a generic Bluetooth SCO device.
+15:49:07  AAARP reports routeActiveForTarget=false, but starts issuing
+          "Bluetooth SCO route paused during media playback" and reasserts Bluetooth
+          A2DP (A2dpSuspended=false and setBluetoothA2dpOn(true)).
+15:49:07-15:49:34
+          AAARP repeats the SCO-pause operation about five times while the phone is
+          ringing / DIGITS owns audio focus.
+15:49:13  AAARP finally clears its global media LoudnessEnhancer.
+15:49:38  DIGITS releases focus and the preceding audio owner regains it.
+
+The installed APK's behavior explains this sequence:
+
+1. Its generic-SCO fallback guard checks only whether the generic SCO device is
+   unmatched and whether AudioManager mode equals MODE_IN_CALL.
+2. It does not treat MODE_RINGTONE or MODE_IN_COMMUNICATION as call-sensitive states.
+   T-Mobile DIGITS/VoIP-style calls commonly use MODE_IN_COMMUNICATION instead of
+   MODE_IN_CALL, and ringing may use MODE_RINGTONE.
+3. pauseBluetoothScoRouteForMediaIfNeeded() can clear the current SCO route merely
+   because the current communication device is SCO, even when
+   routeActiveForTarget=false. In other words, AAARP can interfere with a route owned
+   by the phone/call app rather than a route that AAARP itself selected.
+4. clearRoute() calls clearCommunicationDevice() and then forces AudioManager mode to
+   MODE_NORMAL. Forcing NORMAL during ringing/communication is particularly risky.
+5. The newer APK applies a session-0 LoudnessEnhancer at +1200 mB (roughly +12 dB).
+   It uses a 15-second "recently had media playback" grace period, so this global
+   effect remained enabled for the first several seconds of the incoming ringtone.
+   A strong session-0 boost can clip/distort a loud ringtone.
+6. AAARP was also trying to keep/reassert A2DP during the same call transition.
+
+The ugly ringer was therefore probably a combination of the global +12 dB effect and
+AAARP repeatedly fighting the call's SCO/mode transition. The call being unanswered
+does not prevent the problem because the damaging transition happens while ringing.
+
+
+Recommended repair order
+------------------------
+
+P0 - Recover and commit the actual July 24 source
+
+Before making a release or installing a new APK, find the other PC's uncommitted/newer
+files and merge them into this repository. Confirm the recovered source builds an APK
+whose relevant classes/settings match the installed behavior.
+
+P0 - Make every call/ringing/communication state untouchable
+
+Create one clearly named predicate such as isCallOrCommunicationActive(). It should
+at least treat all of these modes as protected:
+
+* AudioManager.MODE_IN_CALL
+* AudioManager.MODE_IN_COMMUNICATION
+* AudioManager.MODE_RINGTONE
+
+While protected, AAARP should not:
+
+* clear or select a communication device;
+* change AudioManager mode;
+* pause SCO for media;
+* pulse/reassert A2DP;
+* apply media volume-floor changes;
+* enable a global LoudnessEnhancer or DynamicsProcessing effect;
+* perform playback-mute behavior intended for normal media routing.
+
+Mode alone may not catch every OEM/call-app transition. Where practical, also use call
+state, audio focus/playback configuration, or the root audio snapshot to detect ringing
+and VoIP/DIGITS communication. Fail safe: if a call-like transition is ambiguous, leave
+the system-owned route alone.
+
+P0 - Only undo routes/state that AAARP owns
+
+pauseBluetoothScoRouteForMediaIfNeeded() should not clear a device just because the
+current communication device happens to be SCO. Only undo it when AAARP has explicit
+ownership (for example routeActiveForTarget plus a recorded selected-device identity).
+
+Likewise, do not force MODE_NORMAL unless AAARP previously changed the mode and has
+recorded enough state to restore it safely. Prefer not changing global mode at all.
+If mode changes remain necessary, track ownership and the previous mode, and never
+restore over a call/ring/communication transition.
+
+P0 - Release media effects immediately for calls
+
+Do not carry the 15-second recently-playing grace period across a call-like event.
+Disable/release the session-0 LoudnessEnhancer and DynamicsProcessing immediately when
+ringing, in-call, or in-communication activity begins. Re-evaluate whether a +12 dB
+session-0 boost is safe at all; it can affect more than the intended player and has a
+large clipping risk. Prefer a smaller/configurable gain, an effect scoped to the actual
+media session when possible, or volume-floor behavior without a global audio effect.
+
+P1 - Fix the diagnostic export truncation
+
+The attached AAARP-diagnostics-20260727-164147.txt contains only about 116 logical
+lines. Large dumpsys Wi-Fi lines consume the output budget before later audio sections,
+so the manual diagnostic missed the call evidence that existed in the auto log.
+
+RootShell.MAX_OUTPUT_CHARS is 24000, but the loop checks the size before appending an
+entire line. A single giant line can overshoot the cap. Fix by truncating each append to
+the remaining character budget. Also put the short/high-value app, route, playback,
+focus, mode, effect, and error sections before large dumpsys Wi-Fi text. State clearly
+when any section is truncated.
+
+P1 - Add automatic-log retention/rotation
+
+Seven days of pulled auto logs totaled about 23,115,810 bytes. AutoLogWriter currently
+has no obvious size cap or retention policy. Add per-file rotation and total retention
+(for example a modest per-file cap plus 7-14 days or a fixed total-byte budget). Keep
+the call-transition detail, but avoid indefinitely accumulating huge flattened root
+snapshots.
+
+P1 - Move/cache expensive monitoring work
+
+The service's main-handler polling loop performs synchronous root/process/dumpsys work.
+The active path also appears to query Android Auto/Wi-Fi state redundantly:
+isAndroidAutoRunningWithRoot() already obtains current connection data and the service
+then asks for it again. Run blocking probes off the main thread, cache a snapshot per
+poll, and reuse it for all decisions/logging in that cycle. This should reduce latency,
+battery use, and the chance of late route actions during fast audio transitions.
+
+P1 - Fix the Android 6 comparator crash risk
+
+Lint reports app/src/main/java/dev/voxvargr/aaarp/BluetoothDeviceCatalog.java around
+line 92 using Comparator.comparing(), which requires API 24 while minSdk is 23 and core
+library desugaring is not enabled. Replace it with an API-23-safe comparator or enable
+and configure core library desugaring deliberately.
+
+P2 - Clear the remaining lint errors
+
+The current command produced 9 lint errors and 34 warnings. Important groups include
+Bluetooth MissingPermission findings, diagnostics NewApi guarding/annotation, an
+ACCESS_FINE_LOCATION declaration that also needs the appropriate coarse permission,
+and WrongConstant findings that should be inspected to separate real issues from lint
+false positives. Do not blanket-suppress these without reviewing the runtime path.
+
+
+Temporary user workaround until fixed
+-------------------------------------
+To minimize another distorted ringtone, turn off these options in AAARP (names may vary
+slightly in the newer APK):
+
+* Avoid call-quality Bluetooth during media playback
+* Keep media on Bluetooth during Android Auto
+* Boost quiet media during Android Auto
+
+The strongest workaround is to stop/disable the AAARP monitor before expecting calls.
+
+
+General bug-check results
+-------------------------
+Good signs:
+
+* No AAARP crash entries were found in the device crash buffer during the review.
+* The foreground service was running.
+* No substantive explicit failure/error entries were found in the seven days of AAARP
+  auto logs that were pulled.
+* assembleDebug completed successfully.
+
+Problems/risks:
+
+* Current GitHub source does not reproduce the installed APK.
+* Call/ringtone protection is incomplete and AAARP can manipulate system-owned SCO.
+* A session-0 +12 dB boost can distort non-media audio during the 15-second grace.
+* Manual diagnostics can truncate away the most valuable audio evidence.
+* Automatic logs grow without a clear retention cap.
+* Synchronous/redundant root probes may cause battery/responsiveness problems.
+* API-24 Comparator usage can fail on Android 6 (API 23).
+* There are no unit tests in the current Gradle test task (testDebugUnitTest was
+  reported as NO-SOURCE).
+* Lint fails with 9 errors and 34 warnings.
+
+Build/check command used:
+
+  .\gradlew.bat assembleDebug testDebugUnitTest lintDebug --stacktrace
+
+Result:
+
+* assembleDebug: success
+* testDebugUnitTest: NO-SOURCE
+* lintDebug: failed, 9 errors / 34 warnings
+
+Lint text report generated at:
+
+  app\build\intermediates\lint_intermediate_text_report\debug\lintReportDebug\lint-results-debug.txt
+
+
+Verification checklist for the repaired build
+---------------------------------------------
+1. Confirm the recovered source contains all newer monitor settings and media-effect
+   methods seen in the installed APK.
+2. Build debug/release as appropriate and run lint plus any new unit tests.
+3. Resolve the API-23 comparator issue and all non-false-positive lint errors.
+4. Install only after confirming the build came from the recovered/fixed source.
+5. With safe test callers, start normal music and place a controlled incoming cellular
+   call. Repeat with T-Mobile DIGITS/VoIP if available.
+6. Test all phases: ringing, answer, in-call audio, hang-up, and media resumption.
+7. During every ringing/call phase, logs must show ZERO AAARP calls that clear/select a
+   communication device, force MODE_NORMAL, pause SCO for media, or reassert A2DP.
+8. Confirm all global media effects are released immediately when the call begins and
+   are restored only after the call ends and normal media actually resumes.
+9. Confirm the ringtone and call audio are clean through speaker, earpiece, and the
+   intended Bluetooth device.
+10. Confirm A2DP/media resumes once after hang-up without a reconnect loop.
+11. Export a diagnostic and verify every promised heading/section is present, with
+    explicit truncation markers instead of silently missing later sections.
+12. Leave auto logging enabled long enough to prove rotation/retention limits work.
+13. Run a normal Android Auto connect/disconnect cycle and verify the original routing,
+    mute, and restore behaviors were not regressed.
+
+
+Useful current-repo code locations
+----------------------------------
+The older/current checkout's related logic was around:
+
+* RoutingMonitorService.java, approximately lines 212-249
+* AudioRouteController.java, approximately lines 131-138 and 201-263
+* RootShell.java diagnostics collection/output limit logic
+* AutoLogWriter.java log creation/retention logic
+* BluetoothDeviceCatalog.java, approximately line 92
+
+Line numbers may move after the missing July 24 source is recovered.
+
+
+Bottom line
+-----------
+The phone did not merely have a bad ringtone file. The timing and installed-bytecode
+behavior strongly indicate that AAARP was still applying a large global media boost and
+was fighting the call app's communication route during ringing. Recover the newer source
+first, then make call/ringtone states a hard boundary that media-routing code cannot
+cross. After that, fix diagnostic completeness, log retention, polling efficiency, and
+the API-23/lint issues before installing the next test build.
