@@ -168,6 +168,14 @@ final class RouteDevice {
                 return "Earpiece";
             case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:
                 return "Speaker";
+            case AudioDeviceInfo.TYPE_BUILTIN_MIC:
+                return "Built-in mic";
+            case AudioDeviceInfo.TYPE_TELEPHONY:
+                return "Telephony";
+            case AudioDeviceInfo.TYPE_REMOTE_SUBMIX:
+                return "Remote submix";
+            case AudioDeviceInfo.TYPE_FM_TUNER:
+                return "FM tuner";
             default:
                 return "Type " + type;
         }

@@ -8,7 +8,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 final class RootShell {
-    private static final int MAX_OUTPUT_CHARS = 24000;
+    private static final int MAX_OUTPUT_CHARS = 32000;
+    private static final String[] SU_CANDIDATES = {
+            "su",
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/sbin/su",
+            "/debug_ramdisk/su",
+            "/vendor/bin/su"
+    };
 
     ShellResult run(String command, long timeoutMs) {
         StringBuilder output = new StringBuilder();
@@ -17,9 +25,7 @@ final class RootShell {
         Process process;
 
         try {
-            process = new ProcessBuilder("su", "-c", command)
-                    .redirectErrorStream(true)
-                    .start();
+            process = startSuProcess(command);
         } catch (IOException e) {
             return ShellResult.failure("Unable to start su: " + e.getMessage());
         }
@@ -84,9 +90,17 @@ final class RootShell {
                 + "dumpsys audio 2>/dev/null "
                 + "| grep -i -E 'focus|duck|attenuat|loss|gain|request|abandon|client|uid|package|notification|sonification|music|ring|alarm|a2dp|sco|bluetooth' "
                 + "| head -n 220 || true; "
+                + "echo '--- audio recording and input history ---'; "
+                + "dumpsys audio 2>/dev/null "
+                + "| grep -i -E 'rec update|rec stop|record|capture|input|microphone|mic|VOICE_RECOGNITION|VOICE_COMMUNICATION|VOICE_CALL|hotword|assistant|google' "
+                + "| tail -n 220 || true; "
                 + "echo '--- audio policy focus and strategies ---'; "
                 + "dumpsys media.audio_policy 2>/dev/null "
                 + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
+                + "| head -n 220 || true; "
+                + "echo '--- audio policy inputs ---'; "
+                + "dumpsys media.audio_policy 2>/dev/null "
+                + "| grep -i -E 'input|capture|record|source|microphone|mic|VOICE_RECOGNITION|VOICE_COMMUNICATION|VOICE_CALL|hotword|assistant|google|preferred devices for capture|active clients|active inputs' "
                 + "| head -n 220 || true; "
                 + "echo '--- media sessions ---'; "
                 + "dumpsys media_session 2>/dev/null "
@@ -113,9 +127,17 @@ final class RootShell {
                 + "dumpsys audio 2>/dev/null "
                 + "| grep -i -E 'focus|duck|attenuat|loss|gain|request|abandon|client|uid|package|notification|sonification|music|ring|alarm|a2dp|sco|bluetooth' "
                 + "| head -n 160 || true; "
+                + "echo '--- audio recording and input history ---'; "
+                + "dumpsys audio 2>/dev/null "
+                + "| grep -i -E 'rec update|rec stop|record|capture|input|microphone|mic|VOICE_RECOGNITION|VOICE_COMMUNICATION|VOICE_CALL|hotword|assistant|google' "
+                + "| tail -n 160 || true; "
                 + "echo '--- audio policy ---'; "
                 + "dumpsys media.audio_policy 2>/dev/null "
                 + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
+                + "| head -n 160 || true; "
+                + "echo '--- audio policy inputs ---'; "
+                + "dumpsys media.audio_policy 2>/dev/null "
+                + "| grep -i -E 'input|capture|record|source|microphone|mic|VOICE_RECOGNITION|VOICE_COMMUNICATION|VOICE_CALL|hotword|assistant|google|preferred devices for capture|active clients|active inputs' "
                 + "| head -n 160 || true; "
                 + "echo '--- media sessions ---'; "
                 + "dumpsys media_session 2>/dev/null "
@@ -250,6 +272,25 @@ final class RootShell {
             return "''";
         }
         return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    private Process startSuProcess(String command) throws IOException {
+        IOException lastError = null;
+        StringBuilder failures = new StringBuilder();
+        for (String suPath : SU_CANDIDATES) {
+            try {
+                return new ProcessBuilder(suPath, "-c", command)
+                        .redirectErrorStream(true)
+                        .start();
+            } catch (IOException e) {
+                lastError = e;
+                if (failures.length() > 0) {
+                    failures.append("; ");
+                }
+                failures.append(suPath).append(": ").append(e.getMessage());
+            }
+        }
+        throw new IOException(failures.toString(), lastError);
     }
 
     static final class ShellResult {

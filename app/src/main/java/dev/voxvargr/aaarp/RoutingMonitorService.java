@@ -25,7 +25,9 @@ public final class RoutingMonitorService extends Service {
     private static final long ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS = 5000L;
     private static final long AUTO_LOG_HEARTBEAT_MS = 30000L;
     private static final long AUTO_LOG_ROOT_SNAPSHOT_MS = 120000L;
+    private static final long PLAYBACK_IDLE_GRACE_MS = 15000L;
     private static final int AUTO_STOP_MISSES = 3;
+    private static final int MEDIA_BOOST_VOLUME_FLOOR_PERCENT = 92;
 
     private Handler handler;
     private AudioRouteController controller;
@@ -42,10 +44,19 @@ public final class RoutingMonitorService extends Service {
     private boolean notificationPlaybackMuteActive;
     private boolean notificationPlaybackMuteOwned;
     private int notificationPlaybackRestoreVolume = -1;
+    private boolean mediaBoostActive;
+    private boolean mediaBoostVolumeOwned;
+    private boolean mediaBoostVolumeUserControlled;
+    private int mediaBoostRestoreVolume = -1;
+    private int mediaBoostRaisedVolume = -1;
+    private String activeMediaBoostKey;
+    private long lastMediaPlaybackActiveAt;
     private long lastAutoLogAt;
     private long lastRootSnapshotAt;
     private long lastMediaPinPulseLogAt;
     private String lastMediaPinPulseSummary;
+    private long lastMediaBoostLogAt;
+    private String lastMediaBoostSummary;
     private boolean rootSnapshotRunning;
     private String lastAutoLogSummary;
     private final Runnable applyLoop = new Runnable() {
@@ -96,6 +107,7 @@ public final class RoutingMonitorService extends Service {
         handler.removeCallbacks(applyLoop);
         clearAudioTweaksIfNeeded();
         clearNotificationPlaybackMuteIfNeeded();
+        clearMediaBoostIfNeeded();
         super.onDestroy();
     }
 
@@ -135,6 +147,7 @@ public final class RoutingMonitorService extends Service {
                 }
                 applyAudioTweaksIfNeeded(settings, false);
                 updateNotificationPlaybackMute(settings, false);
+                updateMediaBoost(settings, false);
                 return idleDelayFor(settings, false);
             }
 
@@ -154,10 +167,12 @@ public final class RoutingMonitorService extends Service {
             maybeLogRootSnapshot("aa_active");
             applyAudioTweaksIfNeeded(settings, true);
             updateNotificationPlaybackMute(settings, true);
+            updateMediaBoost(settings, true);
             reassertPinnedMediaIfNeeded(settings, true);
         } else {
             applyAudioTweaksIfNeeded(settings, false);
             updateNotificationPlaybackMute(settings, false);
+            updateMediaBoost(settings, false);
         }
 
         if (settings.watchdogMode && !hasPreferredTarget(settings.preferredBluetoothTarget)) {
@@ -376,7 +391,11 @@ public final class RoutingMonitorService extends Service {
         }
 
         if (playbackActive) {
+            lastMediaPlaybackActiveAt = System.currentTimeMillis();
             muteNotificationsForPlaybackIfNeeded(androidAutoActive);
+        } else if (notificationPlaybackMuteActive && recentlyHadMediaPlayback()) {
+            autoLog("notification stream mute held during brief playback gap androidAutoActive="
+                    + androidAutoActive);
         } else {
             clearNotificationPlaybackMuteIfNeeded();
         }
@@ -388,8 +407,146 @@ public final class RoutingMonitorService extends Service {
                 && (androidAutoActive || settings.muteNotificationsDuringPlaybackAlways);
     }
 
+    private void updateMediaBoost(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        if (!shouldBoostMedia(settings, androidAutoActive)) {
+            clearMediaBoostIfNeeded();
+            mediaBoostVolumeUserControlled = false;
+            return;
+        }
+
+        boolean playbackActive;
+        try {
+            playbackActive = controller.isMediaPlaybackActive();
+        } catch (RuntimeException e) {
+            autoLog("media boost playback check failed: " + e.getMessage());
+            return;
+        }
+
+        if (!playbackActive) {
+            if (mediaBoostActive && recentlyHadMediaPlayback()) {
+                logMediaBoost("media boost held during brief playback gap aa=" + androidAutoActive);
+            } else {
+                clearMediaBoostIfNeeded();
+            }
+            return;
+        }
+
+        try {
+            lastMediaPlaybackActiveAt = System.currentTimeMillis();
+            String boostKey = settings.profileId + "|" + settings.mediaDynamicsProcessing;
+            String effect;
+            if (!mediaBoostActive || !boostKey.equals(activeMediaBoostKey)) {
+                effect = controller.enableMediaBoost(settings.mediaDynamicsProcessing);
+                activeMediaBoostKey = boostKey;
+            } else {
+                effect = "effects=already_active";
+            }
+            String volumeSummary = settings.mediaVolumeFloorFallback
+                    ? updateMediaBoostVolumeIfNeeded()
+                    : clearMediaBoostVolumeIfNeeded();
+            mediaBoostActive = true;
+            logMediaBoost("media boost active " + effect
+                    + " " + volumeSummary
+                    + " aa=" + androidAutoActive);
+        } catch (RuntimeException e) {
+            autoLog("media boost failed: " + e.getMessage());
+        }
+    }
+
+    private String updateMediaBoostVolumeIfNeeded() {
+        if (mediaBoostVolumeOwned
+                && mediaBoostRaisedVolume >= 0
+                && controller.musicStreamVolume() != mediaBoostRaisedVolume) {
+            mediaBoostVolumeOwned = false;
+            mediaBoostRestoreVolume = -1;
+            mediaBoostRaisedVolume = -1;
+            mediaBoostVolumeUserControlled = true;
+            return "musicVolume=" + controller.musicVolumeSummary() + " manualOverride";
+        }
+
+        if (mediaBoostActive || mediaBoostVolumeUserControlled) {
+            return "musicVolume=" + controller.musicVolumeSummary()
+                    + (mediaBoostVolumeUserControlled ? " userControlled" : " unchanged");
+        }
+
+        AudioRouteController.VolumeAdjustment adjustment =
+                controller.ensureMusicVolumeAtLeastPercent(MEDIA_BOOST_VOLUME_FLOOR_PERCENT);
+        if (adjustment.changed) {
+            mediaBoostVolumeOwned = true;
+            if (mediaBoostRestoreVolume < 0) {
+                mediaBoostRestoreVolume = adjustment.previousVolume;
+            }
+            mediaBoostRaisedVolume = adjustment.currentVolume;
+        }
+        return adjustment.summary();
+    }
+
+    private String clearMediaBoostVolumeIfNeeded() {
+        if (!mediaBoostVolumeOwned) {
+            mediaBoostVolumeUserControlled = false;
+            return "musicVolume=" + controller.musicVolumeSummary() + " volumeFallback=off";
+        }
+        boolean restoreOwned = mediaBoostVolumeOwned;
+        int restoreVolume = mediaBoostRestoreVolume;
+        int raisedVolume = mediaBoostRaisedVolume;
+        mediaBoostVolumeOwned = false;
+        mediaBoostRestoreVolume = -1;
+        mediaBoostRaisedVolume = -1;
+        mediaBoostVolumeUserControlled = false;
+        if (!restoreOwned) {
+            return "musicVolume=" + controller.musicVolumeSummary() + " volumeFallback=off";
+        }
+        return controller.restoreMusicVolumeIfStillAt(raisedVolume, restoreVolume) + " volumeFallback=off";
+    }
+
+    private boolean shouldBoostMedia(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        return settings.normalizeMediaDuringAndroidAuto
+                && (androidAutoActive || settings.normalizeMediaAlways);
+    }
+
+    private void clearMediaBoostIfNeeded() {
+        if (!mediaBoostActive) {
+            return;
+        }
+        boolean restoreOwned = mediaBoostVolumeOwned;
+        int restoreVolume = mediaBoostRestoreVolume;
+        int raisedVolume = mediaBoostRaisedVolume;
+        if (restoreOwned
+                && raisedVolume >= 0
+                && controller.musicStreamVolume() != raisedVolume) {
+            mediaBoostVolumeUserControlled = true;
+        }
+        mediaBoostActive = false;
+        mediaBoostVolumeOwned = false;
+        mediaBoostRestoreVolume = -1;
+        mediaBoostRaisedVolume = -1;
+        activeMediaBoostKey = null;
+
+        String effect = controller.disableMediaBoost();
+        String restore = "";
+        if (restoreOwned) {
+            try {
+                restore = " " + controller.restoreMusicVolumeIfStillAt(raisedVolume, restoreVolume);
+            } catch (RuntimeException e) {
+                restore = " musicVolumeRestore=failed " + e.getMessage();
+            }
+        }
+        autoLog("media boost cleared " + effect + restore);
+    }
+
+    private void logMediaBoost(String summary) {
+        long now = System.currentTimeMillis();
+        boolean changed = !summary.equals(lastMediaBoostSummary);
+        if (changed || now - lastMediaBoostLogAt >= AUTO_LOG_HEARTBEAT_MS) {
+            lastMediaBoostSummary = summary;
+            lastMediaBoostLogAt = now;
+            autoLog(summary);
+        }
+    }
+
     private long idleDelayFor(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
         return shouldMuteNotificationsDuringPlayback(settings, androidAutoActive)
+                || shouldBoostMedia(settings, androidAutoActive)
                 ? ROUTE_CHECK_INTERVAL_MS
                 : ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS;
     }
@@ -469,6 +626,7 @@ public final class RoutingMonitorService extends Service {
     private void releaseRouteOnStopIfEnabled() {
         clearAudioTweaksIfNeeded();
         clearNotificationPlaybackMuteIfNeeded();
+        clearMediaBoostIfNeeded();
         SharedPreferences prefs = AppPrefs.get(this);
         if (prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true)) {
             controller.clearRoute();
@@ -490,6 +648,10 @@ public final class RoutingMonitorService extends Service {
                 + " currentRoute=" + controller.currentCommunicationDevice()
                 + " pauseScoForMedia=" + settings.pauseBluetoothScoDuringMedia
                 + " pinMediaToBluetooth=" + settings.pinMediaToBluetoothDuringAndroidAuto
+                + " normalizeMedia=" + settings.normalizeMediaDuringAndroidAuto
+                + " normalizeAlways=" + settings.normalizeMediaAlways
+                + " volumeFallback=" + settings.mediaVolumeFloorFallback
+                + " dynamics=" + settings.mediaDynamicsProcessing
                 + " notificationRoute=" + settings.notificationRouteMode
                 + " suppressDucking=" + settings.suppressNotificationDucking
                 + " suppressDuckingAlways=" + settings.suppressNotificationDuckingAlways
@@ -497,6 +659,9 @@ public final class RoutingMonitorService extends Service {
                 + " mutePlaybackAlways=" + settings.muteNotificationsDuringPlaybackAlways
                 + " muteActive=" + notificationPlaybackMuteActive
                 + " muteOwned=" + notificationPlaybackMuteOwned
+                + " mediaBoostActive=" + mediaBoostActive
+                + " mediaBoostOwned=" + mediaBoostVolumeOwned
+                + " inputRoutes=" + controller.compactInputRouteSummary()
                 + " preferredTarget=" + settings.preferredBluetoothTarget
                 + " selected=" + settings.selectedDeviceKey;
         boolean changed = !summary.equals(lastAutoLogSummary);
@@ -533,6 +698,11 @@ public final class RoutingMonitorService extends Service {
 
     private String value(Boolean value) {
         return value == null ? "unknown" : (value ? "yes" : "no");
+    }
+
+    private boolean recentlyHadMediaPlayback() {
+        return lastMediaPlaybackActiveAt > 0L
+                && System.currentTimeMillis() - lastMediaPlaybackActiveAt <= PLAYBACK_IDLE_GRACE_MS;
     }
 
     private void stopForegroundCompat() {

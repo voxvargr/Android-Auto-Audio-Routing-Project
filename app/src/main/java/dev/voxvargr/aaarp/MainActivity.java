@@ -80,6 +80,10 @@ public final class MainActivity extends Activity {
     private CheckBox suppressDuckingAlwaysCheckBox;
     private CheckBox muteNotificationsDuringPlaybackCheckBox;
     private CheckBox muteNotificationsDuringPlaybackAlwaysCheckBox;
+    private CheckBox normalizeMediaDuringAndroidAutoCheckBox;
+    private CheckBox normalizeMediaAlwaysCheckBox;
+    private CheckBox mediaVolumeFloorFallbackCheckBox;
+    private CheckBox mediaDynamicsProcessingCheckBox;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -289,6 +293,42 @@ public final class MainActivity extends Activity {
         pinMediaToBluetoothDuringAndroidAutoCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
                 saveBooleanSetting(AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, isChecked));
         content.addView(pinMediaToBluetoothDuringAndroidAutoCheckBox, blockParams());
+
+        normalizeMediaDuringAndroidAutoCheckBox = new CheckBox(this);
+        normalizeMediaDuringAndroidAutoCheckBox.setText("Boost quiet media during Android Auto");
+        normalizeMediaDuringAndroidAutoCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        normalizeMediaDuringAndroidAutoCheckBox.setChecked(
+                prefBoolean(AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false)
+        );
+        normalizeMediaDuringAndroidAutoCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveBooleanSetting(AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, isChecked);
+            updateDependentSoundTweakControls();
+        });
+        content.addView(normalizeMediaDuringAndroidAutoCheckBox, blockParams());
+
+        normalizeMediaAlwaysCheckBox = new CheckBox(this);
+        normalizeMediaAlwaysCheckBox.setText("Also boost quiet media outside Android Auto");
+        normalizeMediaAlwaysCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        normalizeMediaAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.NORMALIZE_MEDIA_ALWAYS, false));
+        normalizeMediaAlwaysCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                saveBooleanSetting(AppPrefs.NORMALIZE_MEDIA_ALWAYS, isChecked));
+        content.addView(normalizeMediaAlwaysCheckBox, blockParams());
+
+        mediaVolumeFloorFallbackCheckBox = new CheckBox(this);
+        mediaVolumeFloorFallbackCheckBox.setText("Use volume fallback if boost is not enough");
+        mediaVolumeFloorFallbackCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        mediaVolumeFloorFallbackCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false));
+        mediaVolumeFloorFallbackCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                saveBooleanSetting(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, isChecked));
+        content.addView(mediaVolumeFloorFallbackCheckBox, blockParams());
+
+        mediaDynamicsProcessingCheckBox = new CheckBox(this);
+        mediaDynamicsProcessingCheckBox.setText("Experimental stronger compressor/limiter");
+        mediaDynamicsProcessingCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        mediaDynamicsProcessingCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_DYNAMICS_PROCESSING, false));
+        mediaDynamicsProcessingCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
+                saveBooleanSetting(AppPrefs.MEDIA_DYNAMICS_PROCESSING, isChecked));
+        content.addView(mediaDynamicsProcessingCheckBox, blockParams());
 
         TextView notificationRouteLabel = text("Notification sound route during Android Auto", 15, true);
         notificationRouteLabel.setTextColor(getColor(R.color.aaarp_text));
@@ -614,6 +654,7 @@ public final class MainActivity extends Activity {
         report.append("AAARP diagnostics\n");
         report.append("Android Auto installed: ").append(AndroidAutoStatus.isInstalled(this) ? "yes" : "no").append('\n');
         report.append("Current communication route: ").append(controller.currentCommunicationDevice()).append('\n');
+        report.append("Available input routes:\n").append(controller.inputRouteSummary()).append('\n');
         report.append("Active profile: ").append(settings.profileId)
                 .append(" - ").append(connection.label()).append('\n');
         report.append("Watch Android Auto: ")
@@ -635,6 +676,15 @@ public final class MainActivity extends Activity {
                 .append(settings.pauseBluetoothScoDuringMedia ? "on" : "off").append('\n');
         report.append("Keep media on Bluetooth during Android Auto: ")
                 .append(settings.pinMediaToBluetoothDuringAndroidAuto ? "on" : "off").append('\n');
+        report.append("Boost quiet media during Android Auto: ")
+                .append(settings.normalizeMediaDuringAndroidAuto ? "on" : "off").append('\n');
+        report.append("Boost quiet media outside Android Auto: ")
+                .append(settings.normalizeMediaAlways ? "on" : "off").append('\n');
+        report.append("Use volume fallback for quiet media: ")
+                .append(settings.mediaVolumeFloorFallback ? "on" : "off").append('\n');
+        report.append("Use stronger compressor/limiter: ")
+                .append(settings.mediaDynamicsProcessing ? "on" : "off").append('\n');
+        report.append("Music volume: ").append(controller.musicVolumeSummary()).append('\n');
         report.append("Notification route during Android Auto: ")
                 .append(settings.notificationRouteMode).append('\n');
         report.append("Try to stop notification ducking: ")
@@ -872,6 +922,12 @@ public final class MainActivity extends Activity {
         pinMediaToBluetoothDuringAndroidAutoCheckBox.setChecked(
                 prefBoolean(AppPrefs.PIN_MEDIA_TO_BLUETOOTH_DURING_ANDROID_AUTO, false)
         );
+        normalizeMediaDuringAndroidAutoCheckBox.setChecked(
+                prefBoolean(AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false)
+        );
+        normalizeMediaAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.NORMALIZE_MEDIA_ALWAYS, false));
+        mediaVolumeFloorFallbackCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false));
+        mediaDynamicsProcessingCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_DYNAMICS_PROCESSING, false));
         suppressDuckingCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false));
         suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
         muteNotificationsDuringPlaybackCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false));
@@ -895,6 +951,15 @@ public final class MainActivity extends Activity {
             muteNotificationsDuringPlaybackAlwaysCheckBox.setEnabled(
                     muteNotificationsDuringPlaybackCheckBox.isChecked()
             );
+        }
+        if (normalizeMediaAlwaysCheckBox != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
+            normalizeMediaAlwaysCheckBox.setEnabled(normalizeMediaDuringAndroidAutoCheckBox.isChecked());
+        }
+        if (mediaVolumeFloorFallbackCheckBox != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
+            mediaVolumeFloorFallbackCheckBox.setEnabled(normalizeMediaDuringAndroidAutoCheckBox.isChecked());
+        }
+        if (mediaDynamicsProcessingCheckBox != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
+            mediaDynamicsProcessingCheckBox.setEnabled(normalizeMediaDuringAndroidAutoCheckBox.isChecked());
         }
     }
 

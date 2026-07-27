@@ -3,6 +3,8 @@ package dev.voxvargr.aaarp;
 import android.content.Context;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
+import android.media.audiofx.DynamicsProcessing;
+import android.media.audiofx.LoudnessEnhancer;
 import android.os.Build;
 
 import java.lang.reflect.Method;
@@ -10,9 +12,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class AudioRouteController {
+    private static final int GLOBAL_AUDIO_SESSION = 0;
+    private static final int MEDIA_BOOST_GAIN_MB = 1200;
+    private static final float DYNAMICS_INPUT_GAIN_DB = 4.0f;
+    private static final float DYNAMICS_MBC_PRE_GAIN_DB = 6.0f;
+    private static final float DYNAMICS_MBC_POST_GAIN_DB = 1.5f;
+    private static final float DYNAMICS_MBC_THRESHOLD_DB = -32.0f;
+    private static final float DYNAMICS_MBC_RATIO = 2.8f;
+    private static final float DYNAMICS_LIMITER_THRESHOLD_DB = -1.0f;
+    private static final float DYNAMICS_LIMITER_RATIO = 10.0f;
+
     private final Context context;
     private final AudioManager audioManager;
     private final RootShell rootShell;
+    private LoudnessEnhancer mediaBoost;
+    private DynamicsProcessing dynamicsBoost;
 
     AudioRouteController(Context context) {
         this.context = context.getApplicationContext();
@@ -148,6 +162,34 @@ final class AudioRouteController {
         return isBluetoothScoOn() ? "Bluetooth SCO" : "platform default";
     }
 
+    String inputRouteSummary() {
+        List<RouteDevice> inputDevices = listInputDevices();
+        if (inputDevices.isEmpty()) {
+            return "- none";
+        }
+        StringBuilder summary = new StringBuilder();
+        for (RouteDevice device : inputDevices) {
+            summary.append("- ").append(device.detailLabel()).append('\n');
+        }
+        return summary.toString();
+    }
+
+    String compactInputRouteSummary() {
+        List<RouteDevice> inputDevices = listInputDevices();
+        if (inputDevices.isEmpty()) {
+            return "none";
+        }
+        StringBuilder summary = new StringBuilder();
+        for (RouteDevice device : inputDevices) {
+            if (summary.length() > 0) {
+                summary.append("; ");
+            }
+            summary.append(device.displayLabel());
+        }
+        String value = summary.toString();
+        return value.length() <= 260 ? value : value.substring(0, 257) + "...";
+    }
+
     RootShell.ShellResult rootDiagnostics() {
         return rootShell.diagnostics();
     }
@@ -200,6 +242,128 @@ final class AudioRouteController {
 
     boolean isMediaPlaybackActive() {
         return audioManager.isMusicActive();
+    }
+
+    String enableMediaBoost(boolean enableDynamicsProcessing) {
+        StringBuilder summary = new StringBuilder();
+        try {
+            if (mediaBoost == null) {
+                mediaBoost = new LoudnessEnhancer(GLOBAL_AUDIO_SESSION);
+            }
+            mediaBoost.setTargetGain(MEDIA_BOOST_GAIN_MB);
+            mediaBoost.setEnabled(true);
+            summary.append("loudness=on gainMb=").append((int) mediaBoost.getTargetGain());
+        } catch (RuntimeException e) {
+            releaseMediaBoostQuietly();
+            summary.append("loudness=failed ").append(shortMessage(e));
+        }
+        summary.append(" ");
+        if (enableDynamicsProcessing) {
+            summary.append(enableDynamicsBoost());
+        } else {
+            summary.append(disableDynamicsBoost());
+        }
+        return summary.toString();
+    }
+
+    String disableMediaBoost() {
+        StringBuilder summary = new StringBuilder();
+        if (mediaBoost == null) {
+            summary.append("loudness=off already");
+        } else {
+            try {
+                mediaBoost.setEnabled(false);
+                mediaBoost.release();
+                summary.append("loudness=off");
+            } catch (RuntimeException e) {
+                summary.append("loudness=clear_failed ").append(shortMessage(e));
+            } finally {
+                mediaBoost = null;
+            }
+        }
+        summary.append(" ").append(disableDynamicsBoost());
+        return summary.toString();
+    }
+
+    private String enableDynamicsBoost() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return "dynamics=unavailable";
+        }
+        try {
+            if (dynamicsBoost == null) {
+                DynamicsProcessing.Config config = new DynamicsProcessing.Config.Builder(
+                        DynamicsProcessing.VARIANT_FAVOR_TIME_RESOLUTION,
+                        2,
+                        false,
+                        0,
+                        true,
+                        1,
+                        false,
+                        0,
+                        true
+                )
+                        .setInputGainAllChannelsTo(DYNAMICS_INPUT_GAIN_DB)
+                        .build();
+                dynamicsBoost = new DynamicsProcessing(0, GLOBAL_AUDIO_SESSION, config);
+            }
+            applyDynamicsSettings();
+            dynamicsBoost.setEnabled(true);
+            return "dynamics=on inputGainDb=" + DYNAMICS_INPUT_GAIN_DB;
+        } catch (RuntimeException e) {
+            releaseDynamicsBoostQuietly();
+            return "dynamics=failed " + shortMessage(e);
+        }
+    }
+
+    private String disableDynamicsBoost() {
+        if (dynamicsBoost == null) {
+            return "dynamics=off already";
+        }
+        try {
+            dynamicsBoost.setEnabled(false);
+            dynamicsBoost.release();
+            return "dynamics=off";
+        } catch (RuntimeException e) {
+            return "dynamics=clear_failed " + shortMessage(e);
+        } finally {
+            dynamicsBoost = null;
+        }
+    }
+
+    VolumeAdjustment ensureMusicVolumeAtLeastPercent(int percent) {
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        int safePercent = Math.max(0, Math.min(percent, 100));
+        int targetVolume = Math.max(0, Math.min(maxVolume, Math.round(maxVolume * safePercent / 100f)));
+        if (currentVolume < targetVolume) {
+            setMusicStreamVolume(targetVolume);
+            return new VolumeAdjustment(currentVolume, targetVolume, maxVolume, true);
+        }
+        return new VolumeAdjustment(currentVolume, currentVolume, maxVolume, false);
+    }
+
+    String restoreMusicVolumeIfStillAt(int expectedVolume, int restoreVolume) {
+        if (restoreVolume < 0) {
+            return "musicVolumeRestore=skipped";
+        }
+        int currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        if (currentVolume == expectedVolume) {
+            setMusicStreamVolume(restoreVolume);
+            return "musicVolumeRestore=restored " + restoreVolume + "/" + maxVolume;
+        }
+        return "musicVolumeRestore=left_alone current=" + currentVolume + "/" + maxVolume
+                + " expected=" + expectedVolume
+                + " restore=" + restoreVolume;
+    }
+
+    String musicVolumeSummary() {
+        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                + "/" + audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+    }
+
+    int musicStreamVolume() {
+        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
     }
 
     String reassertBluetoothMediaPath(String selectedKey, String preferredBluetoothTarget) {
@@ -421,6 +585,14 @@ final class AudioRouteController {
         return devices;
     }
 
+    private List<RouteDevice> listInputDevices() {
+        List<RouteDevice> devices = new ArrayList<>();
+        for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+            devices.add(RouteDevice.from(device));
+        }
+        return devices;
+    }
+
     private RouteDevice firstDeviceByType(List<RouteDevice> devices, int type) {
         for (RouteDevice device : devices) {
             if (device.type() == type) {
@@ -456,6 +628,68 @@ final class AudioRouteController {
             message = cause.getClass().getSimpleName();
         }
         return message.replace('\n', ' ');
+    }
+
+    private void setMusicStreamVolume(int volume) {
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int safeVolume = Math.max(0, Math.min(volume, maxVolume));
+        audioManager.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                safeVolume,
+                AudioManager.FLAG_REMOVE_SOUND_AND_VIBRATE
+        );
+    }
+
+    private void releaseMediaBoostQuietly() {
+        if (mediaBoost == null) {
+            return;
+        }
+        try {
+            mediaBoost.release();
+        } catch (RuntimeException ignored) {
+            // Best-effort cleanup after audio effect failure.
+        } finally {
+            mediaBoost = null;
+        }
+    }
+
+    private void applyDynamicsSettings() {
+        if (dynamicsBoost == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return;
+        }
+        dynamicsBoost.setInputGainAllChannelsTo(DYNAMICS_INPUT_GAIN_DB);
+
+        DynamicsProcessing.MbcBand band = dynamicsBoost.getMbcBandByChannelIndex(0, 0);
+        band.setPreGain(DYNAMICS_MBC_PRE_GAIN_DB);
+        band.setPostGain(DYNAMICS_MBC_POST_GAIN_DB);
+        band.setThreshold(DYNAMICS_MBC_THRESHOLD_DB);
+        band.setRatio(DYNAMICS_MBC_RATIO);
+        band.setAttackTime(8.0f);
+        band.setReleaseTime(120.0f);
+        band.setNoiseGateThreshold(-80.0f);
+        band.setExpanderRatio(1.0f);
+        dynamicsBoost.setMbcBandAllChannelsTo(0, band);
+
+        DynamicsProcessing.Limiter limiter = dynamicsBoost.getLimiterByChannelIndex(0);
+        limiter.setThreshold(DYNAMICS_LIMITER_THRESHOLD_DB);
+        limiter.setRatio(DYNAMICS_LIMITER_RATIO);
+        limiter.setAttackTime(1.0f);
+        limiter.setReleaseTime(60.0f);
+        limiter.setPostGain(0.0f);
+        dynamicsBoost.setLimiterAllChannelsTo(limiter);
+    }
+
+    private void releaseDynamicsBoostQuietly() {
+        if (dynamicsBoost == null) {
+            return;
+        }
+        try {
+            dynamicsBoost.release();
+        } catch (RuntimeException ignored) {
+            // Best-effort cleanup after audio effect failure.
+        } finally {
+            dynamicsBoost = null;
+        }
     }
 
     private String formatPreferredTarget(String preferredBluetoothTarget) {
@@ -546,6 +780,25 @@ final class AudioRouteController {
         RoutingResult(boolean success, String log) {
             this.success = success;
             this.log = log == null ? "" : log;
+        }
+    }
+
+    static final class VolumeAdjustment {
+        final int previousVolume;
+        final int currentVolume;
+        final int maxVolume;
+        final boolean changed;
+
+        VolumeAdjustment(int previousVolume, int currentVolume, int maxVolume, boolean changed) {
+            this.previousVolume = previousVolume;
+            this.currentVolume = currentVolume;
+            this.maxVolume = maxVolume;
+            this.changed = changed;
+        }
+
+        String summary() {
+            return "musicVolume=" + currentVolume + "/" + maxVolume
+                    + (changed ? " raisedFrom=" + previousVolume : " unchanged");
         }
     }
 }

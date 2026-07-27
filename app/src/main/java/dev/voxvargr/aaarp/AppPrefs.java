@@ -27,6 +27,10 @@ final class AppPrefs {
     static final String SUPPRESS_NOTIFICATION_DUCKING_ALWAYS = "suppress_notification_ducking_always";
     static final String MUTE_NOTIFICATIONS_DURING_PLAYBACK = "mute_notifications_during_playback";
     static final String MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS = "mute_notifications_during_playback_always";
+    static final String NORMALIZE_MEDIA_DURING_ANDROID_AUTO = "normalize_media_during_android_auto";
+    static final String NORMALIZE_MEDIA_ALWAYS = "normalize_media_always";
+    static final String MEDIA_VOLUME_FLOOR_FALLBACK = "media_volume_floor_fallback";
+    static final String MEDIA_DYNAMICS_PROCESSING = "media_dynamics_processing";
 
     private AppPrefs() {
     }
