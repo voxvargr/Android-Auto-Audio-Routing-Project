@@ -1,5 +1,6 @@
 package dev.voxvargr.aaarp;
 
+import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
@@ -89,7 +90,12 @@ final class BluetoothDeviceCatalog {
                         findMatchingRoute(device, routeDevices)
                 ));
             }
-            Collections.sort(targets, Comparator.comparing(BluetoothTarget::displayLabel, String.CASE_INSENSITIVE_ORDER));
+            Collections.sort(targets, new Comparator<BluetoothTarget>() {
+                @Override
+                public int compare(BluetoothTarget left, BluetoothTarget right) {
+                    return String.CASE_INSENSITIVE_ORDER.compare(left.displayLabel(), right.displayLabel());
+                }
+            });
             return targets;
         } catch (SecurityException e) {
             return targets;
@@ -119,6 +125,7 @@ final class BluetoothDeviceCatalog {
         return null;
     }
 
+    @SuppressLint("MissingPermission")
     private static String profileState(BluetoothAdapter adapter, int profile, String label) {
         return label + "=" + connectionState(adapter.getProfileConnectionState(profile));
     }
@@ -137,11 +144,13 @@ final class BluetoothDeviceCatalog {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private static String deviceName(BluetoothDevice device) {
         String name = device.getName();
         return name == null || name.length() == 0 ? "Unnamed device" : name;
     }
 
+    @SuppressLint("MissingPermission")
     private static String deviceAlias(BluetoothDevice device) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             String alias = device.getAlias();
@@ -157,6 +166,7 @@ final class BluetoothDeviceCatalog {
         return address == null || address.length() == 0 ? "no address" : address;
     }
 
+    @SuppressLint("MissingPermission")
     private static String deviceClass(BluetoothDevice device) {
         BluetoothClass bluetoothClass = device.getBluetoothClass();
         if (bluetoothClass == null) {

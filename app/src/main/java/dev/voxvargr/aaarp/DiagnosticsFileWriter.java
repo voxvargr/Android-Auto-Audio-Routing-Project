@@ -1,5 +1,6 @@
 package dev.voxvargr.aaarp;
 
+import android.annotation.TargetApi;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -33,6 +34,7 @@ final class DiagnosticsFileWriter {
         return writeToAppDownloads(context, fileName, bytes);
     }
 
+    @TargetApi(Build.VERSION_CODES.Q)
     private static String writeToDownloadsMediaStore(Context context, String fileName, byte[] bytes) throws IOException {
         ContentValues values = new ContentValues();
         values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);

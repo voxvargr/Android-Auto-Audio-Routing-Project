@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 final class RootShell {
     private static final int MAX_OUTPUT_CHARS = 32000;
+    private static final String TRUNCATED_OUTPUT = "\n[AAARP diagnostics truncated]\n";
     private static final String[] SU_CANDIDATES = {
             "su",
             "/system/bin/su",
@@ -34,16 +35,14 @@ final class RootShell {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (output.length() < MAX_OUTPUT_CHARS) {
-                        output.append(line).append('\n');
-                    }
+                    appendOutputLine(output, line);
                 }
                 exitCode.set(process.waitFor());
             } catch (IOException e) {
-                output.append("I/O error: ").append(e.getMessage()).append('\n');
+                appendOutputLine(output, "I/O error: " + e.getMessage());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                output.append("Interrupted.\n");
+                appendOutputLine(output, "Interrupted.");
             } finally {
                 done.countDown();
             }
@@ -53,12 +52,14 @@ final class RootShell {
         try {
             if (!done.await(timeoutMs, TimeUnit.MILLISECONDS)) {
                 process.destroy();
-                return new ShellResult(false, -1, output.append("Timed out.\n").toString());
+                appendOutputLine(output, "Timed out.");
+                return new ShellResult(false, -1, output.toString());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             process.destroy();
-            return new ShellResult(false, -1, output.append("Interrupted.\n").toString());
+            appendOutputLine(output, "Interrupted.");
+            return new ShellResult(false, -1, output.toString());
         }
 
         int code = exitCode.get();
@@ -75,11 +76,6 @@ final class RootShell {
                 + "echo '--- Android Auto processes ---'; "
                 + "pidof com.google.android.projection.gearhead 2>/dev/null || true; "
                 + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
-                + "echo '--- Wi-Fi identity ---'; "
-                + "cmd wifi status 2>/dev/null || true; "
-                + "dumpsys wifi 2>/dev/null "
-                + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo|networkId|ephemeral|specifier|local.?only|validated|internet|restricted|trusted' "
-                + "| head -n 80 || true; "
                 + "echo '--- appops audio focus ---'; "
                 + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
                 + "cmd appops get android TAKE_AUDIO_FOCUS 2>/dev/null || true; "
@@ -106,6 +102,11 @@ final class RootShell {
                 + "dumpsys media_session 2>/dev/null "
                 + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|android auto|projection|gearhead' "
                 + "| head -n 120 || true; "
+                + "echo '--- Wi-Fi identity ---'; "
+                + "cmd wifi status 2>/dev/null || true; "
+                + "dumpsys wifi 2>/dev/null "
+                + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo|networkId|ephemeral|specifier|local.?only|validated|internet|restricted|trusted' "
+                + "| head -n 80 || true; "
                 + "echo '--- Bluetooth audio state ---'; "
                 + "dumpsys bluetooth_manager 2>/dev/null "
                 + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
@@ -119,8 +120,6 @@ final class RootShell {
         String command = "echo '--- auto log snapshot ---'; date; "
                 + "echo '--- Android Auto processes ---'; "
                 + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
-                + "echo '--- Wi-Fi identity ---'; "
-                + "cmd wifi status 2>/dev/null | grep -i -E 'connected to|WifiInfo|SSID|BSSID|Ephemeral|Requesting package|Trusted|Restricted' || true; "
                 + "echo '--- appops audio focus ---'; "
                 + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
                 + "echo '--- audio focus and ducking ---'; "
@@ -143,6 +142,8 @@ final class RootShell {
                 + "dumpsys media_session 2>/dev/null "
                 + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|projection|gearhead' "
                 + "| head -n 80 || true; "
+                + "echo '--- Wi-Fi identity ---'; "
+                + "cmd wifi status 2>/dev/null | grep -i -E 'connected to|WifiInfo|SSID|BSSID|Ephemeral|Requesting package|Trusted|Restricted' || true; "
                 + "echo '--- Bluetooth audio state ---'; "
                 + "dumpsys bluetooth_manager 2>/dev/null "
                 + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
@@ -291,6 +292,24 @@ final class RootShell {
             }
         }
         throw new IOException(failures.toString(), lastError);
+    }
+
+    private static void appendOutputLine(StringBuilder output, String line) {
+        if (output.length() >= MAX_OUTPUT_CHARS) {
+            return;
+        }
+        String value = (line == null ? "" : line) + '\n';
+        int remaining = MAX_OUTPUT_CHARS - output.length();
+        if (value.length() <= remaining) {
+            output.append(value);
+            return;
+        }
+        if (remaining > TRUNCATED_OUTPUT.length()) {
+            output.append(value, 0, remaining - TRUNCATED_OUTPUT.length());
+            output.append(TRUNCATED_OUTPUT);
+        } else {
+            output.append(value, 0, remaining);
+        }
     }
 
     static final class ShellResult {

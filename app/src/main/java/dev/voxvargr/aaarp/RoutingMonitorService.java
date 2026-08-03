@@ -57,6 +57,8 @@ public final class RoutingMonitorService extends Service {
     private String lastMediaPinPulseSummary;
     private long lastMediaBoostLogAt;
     private String lastMediaBoostSummary;
+    private long lastCallProtectionLogAt;
+    private String lastCallProtectionSummary;
     private boolean rootSnapshotRunning;
     private String lastAutoLogSummary;
     private final Runnable applyLoop = new Runnable() {
@@ -120,6 +122,11 @@ public final class RoutingMonitorService extends Service {
         ProfileSettings.MonitorSettings settings = ProfileSettings.monitorSettings(this, null);
         AndroidAutoConnection activeConnection = AndroidAutoConnection.fallback();
         boolean androidAutoActive = false;
+
+        if (isCallOrCommunicationActive()) {
+            handleCallOrCommunicationProtection(settings);
+            return ROUTE_CHECK_INTERVAL_MS;
+        }
 
         if (settings.watchdogMode) {
             boolean androidAutoRunning = controller.isAndroidAutoRunningWithRoot();
@@ -232,7 +239,7 @@ public final class RoutingMonitorService extends Service {
             return controller.selectedRouteIsUnmatchedBluetoothScoFallback(
                     settings.selectedDeviceKey,
                     settings.preferredBluetoothTarget
-            ) && !controller.isInCallAudioMode();
+            ) && !isCallOrCommunicationActive();
         } catch (RuntimeException e) {
             autoLog("Bluetooth SCO fallback guard failed: " + e.getMessage());
             return false;
@@ -256,8 +263,11 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void pauseBluetoothScoRouteForMediaIfNeeded() {
-        if (routeActiveForTarget || controller.isCurrentCommunicationRouteBluetoothSco()) {
-            controller.clearRoute();
+        if (isCallOrCommunicationActive()) {
+            autoLog("Bluetooth SCO pause skipped during " + controller.audioModeSummary());
+            return;
+        }
+        if (routeActiveForTarget && controller.clearOwnedRouteIfCurrentBluetoothSco()) {
             routeActiveForTarget = false;
             autoLog("Bluetooth SCO route paused during media playback");
         }
@@ -268,6 +278,10 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void releaseActiveTargetRouteIfNeeded(boolean releaseAfterDisconnect) {
+        if (isCallOrCommunicationActive()) {
+            autoLog("route release skipped during " + controller.audioModeSummary());
+            return;
+        }
         if (releaseAfterDisconnect && routeActiveForTarget) {
             controller.clearRoute();
             routeActiveForTarget = false;
@@ -276,6 +290,10 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void applyAudioTweaksIfNeeded(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        if (isCallOrCommunicationActive()) {
+            logCallProtection("audio tweaks skipped", settings);
+            return;
+        }
         String notificationRouteMode = androidAutoActive
                 ? settings.notificationRouteMode
                 : AppPrefs.NOTIFICATION_ROUTE_OFF;
@@ -350,6 +368,10 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void reassertPinnedMediaIfNeeded(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        if (isCallOrCommunicationActive()) {
+            logCallProtection("media pin skipped", settings);
+            return;
+        }
         if (!androidAutoActive || !settings.pinMediaToBluetoothDuringAndroidAuto) {
             return;
         }
@@ -377,6 +399,11 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void updateNotificationPlaybackMute(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        if (isCallOrCommunicationActive()) {
+            clearNotificationPlaybackMuteIfNeeded();
+            logCallProtection("notification playback mute skipped", settings);
+            return;
+        }
         if (!shouldMuteNotificationsDuringPlayback(settings, androidAutoActive)) {
             clearNotificationPlaybackMuteIfNeeded();
             return;
@@ -408,6 +435,11 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void updateMediaBoost(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        if (isCallOrCommunicationActive()) {
+            clearMediaBoostForCallProtection();
+            logCallProtection("media boost skipped", settings);
+            return;
+        }
         if (!shouldBoostMedia(settings, androidAutoActive)) {
             clearMediaBoostIfNeeded();
             mediaBoostVolumeUserControlled = false;
@@ -450,6 +482,7 @@ public final class RoutingMonitorService extends Service {
                     + " aa=" + androidAutoActive);
         } catch (RuntimeException e) {
             autoLog("media boost failed: " + e.getMessage());
+            clearMediaBoostForCallProtection();
         }
     }
 
@@ -532,6 +565,34 @@ public final class RoutingMonitorService extends Service {
             }
         }
         autoLog("media boost cleared " + effect + restore);
+    }
+
+    private void clearMediaBoostForCallProtection() {
+        boolean restoreOwned = mediaBoostVolumeOwned;
+        int restoreVolume = mediaBoostRestoreVolume;
+        int raisedVolume = mediaBoostRaisedVolume;
+        boolean hadTrackedState = mediaBoostActive
+                || mediaBoostVolumeOwned
+                || activeMediaBoostKey != null
+                || mediaBoostRaisedVolume >= 0;
+        mediaBoostActive = false;
+        mediaBoostVolumeOwned = false;
+        mediaBoostRestoreVolume = -1;
+        mediaBoostRaisedVolume = -1;
+        activeMediaBoostKey = null;
+
+        String effect = controller.disableMediaBoost();
+        String restore = "";
+        if (restoreOwned) {
+            try {
+                restore = " " + controller.restoreMusicVolumeIfStillAt(raisedVolume, restoreVolume);
+            } catch (RuntimeException e) {
+                restore = " musicVolumeRestore=failed " + e.getMessage();
+            }
+        }
+        if (hadTrackedState || !effect.contains("already")) {
+            autoLog("media boost cleared for call protection " + effect + restore);
+        }
     }
 
     private void logMediaBoost(String summary) {
@@ -629,6 +690,10 @@ public final class RoutingMonitorService extends Service {
         clearMediaBoostIfNeeded();
         SharedPreferences prefs = AppPrefs.get(this);
         if (prefs.getBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true)) {
+            if (isCallOrCommunicationActive()) {
+                autoLog("route clear on monitor stop skipped during " + controller.audioModeSummary());
+                return;
+            }
             controller.clearRoute();
             routeActiveForTarget = false;
             autoLog("route cleared on monitor stop");
@@ -646,6 +711,7 @@ public final class RoutingMonitorService extends Service {
                 + " targetConnected=" + value(targetConnected)
                 + " routeActive=" + routeActiveForTarget
                 + " currentRoute=" + controller.currentCommunicationDevice()
+                + " audioMode=" + controller.audioModeSummary()
                 + " pauseScoForMedia=" + settings.pauseBluetoothScoDuringMedia
                 + " pinMediaToBluetooth=" + settings.pinMediaToBluetoothDuringAndroidAuto
                 + " normalizeMedia=" + settings.normalizeMediaDuringAndroidAuto
@@ -703,6 +769,40 @@ public final class RoutingMonitorService extends Service {
     private boolean recentlyHadMediaPlayback() {
         return lastMediaPlaybackActiveAt > 0L
                 && System.currentTimeMillis() - lastMediaPlaybackActiveAt <= PLAYBACK_IDLE_GRACE_MS;
+    }
+
+    private boolean isCallOrCommunicationActive() {
+        try {
+            return controller.isCallOrCommunicationActive();
+        } catch (RuntimeException e) {
+            autoLog("audio mode check failed; leaving routes alone: " + e.getMessage());
+            return true;
+        }
+    }
+
+    private void handleCallOrCommunicationProtection(ProfileSettings.MonitorSettings settings) {
+        routeActiveForTarget = false;
+        clearNotificationPlaybackMuteIfNeeded();
+        clearMediaBoostForCallProtection();
+        logCallProtection("monitor protected", settings);
+    }
+
+    private void logCallProtection(String action, ProfileSettings.MonitorSettings settings) {
+        long now = System.currentTimeMillis();
+        String summary = action
+                + " mode=" + controller.audioModeSummary()
+                + " profile=" + settings.profileId
+                + " routeActive=" + routeActiveForTarget
+                + " currentRoute=" + controller.currentCommunicationDevice()
+                + " mediaBoostActive=" + mediaBoostActive
+                + " muteActive=" + notificationPlaybackMuteActive
+                + " target=" + settings.preferredBluetoothTarget;
+        boolean changed = !summary.equals(lastCallProtectionSummary);
+        if (changed || now - lastCallProtectionLogAt >= AUTO_LOG_HEARTBEAT_MS) {
+            lastCallProtectionSummary = summary;
+            lastCallProtectionLogAt = now;
+            autoLog(summary);
+        }
     }
 
     private void stopForegroundCompat() {

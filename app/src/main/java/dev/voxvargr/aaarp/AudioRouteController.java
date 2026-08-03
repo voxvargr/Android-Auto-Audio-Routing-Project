@@ -1,5 +1,6 @@
 package dev.voxvargr.aaarp;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
@@ -27,6 +28,7 @@ final class AudioRouteController {
     private final RootShell rootShell;
     private LoudnessEnhancer mediaBoost;
     private DynamicsProcessing dynamicsBoost;
+    private String ownedCommunicationRouteKey;
 
     AudioRouteController(Context context) {
         this.context = context.getApplicationContext();
@@ -99,6 +101,12 @@ final class AudioRouteController {
         RouteDevice selected = findSelected(routeDevices, selectedKey, preferredBluetoothTarget);
         StringBuilder log = new StringBuilder();
 
+        if (isCallOrCommunicationActive()) {
+            log.append("Call/ring/communication mode is active; AAARP left the route alone.\n");
+            log.append("Audio mode: ").append(audioModeSummary()).append('\n');
+            return new RoutingResult(false, log.toString());
+        }
+
         if (hasPreferredTarget(preferredBluetoothTarget)) {
             log.append("Preferred Bluetooth target: ").append(formatPreferredTarget(preferredBluetoothTarget)).append('\n');
             if (!selected.matchesTarget(preferredBluetoothTarget)) {
@@ -118,7 +126,6 @@ final class AudioRouteController {
         log.append("Public route layer: ");
 
         try {
-            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && selected.isRealDevice()) {
                 AudioDeviceInfo device = findCommunicationDevice(selected);
                 if (device == null) {
@@ -126,12 +133,15 @@ final class AudioRouteController {
                     return new RoutingResult(false, log.toString());
                 }
                 boolean accepted = audioManager.setCommunicationDevice(device);
+                ownedCommunicationRouteKey = accepted ? selected.key() : null;
                 log.append(accepted ? "accepted" : "rejected").append('\n');
                 log.append("Current communication device: ").append(currentCommunicationDevice()).append('\n');
                 return new RoutingResult(accepted, log.toString());
             }
 
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
             applyLegacyBluetoothSco(log);
+            ownedCommunicationRouteKey = selected.key();
             return new RoutingResult(true, log.toString());
         } catch (SecurityException e) {
             log.append("permission blocked: ").append(e.getMessage()).append('\n');
@@ -148,7 +158,18 @@ final class AudioRouteController {
         } else {
             clearLegacyBluetoothSco();
         }
-        audioManager.setMode(AudioManager.MODE_NORMAL);
+        ownedCommunicationRouteKey = null;
+    }
+
+    boolean clearOwnedRouteIfCurrentBluetoothSco() {
+        if (ownedCommunicationRouteKey == null || !isCurrentCommunicationRouteOwned()) {
+            return false;
+        }
+        if (!isCurrentCommunicationRouteBluetoothSco()) {
+            return false;
+        }
+        clearRoute();
+        return true;
     }
 
     String currentCommunicationDevice() {
@@ -422,8 +443,27 @@ final class AudioRouteController {
         return isBluetoothScoOn();
     }
 
-    boolean isInCallAudioMode() {
-        return audioManager.getMode() == AudioManager.MODE_IN_CALL;
+    boolean isCallOrCommunicationActive() {
+        int mode = audioManager.getMode();
+        return mode == AudioManager.MODE_IN_CALL
+                || mode == AudioManager.MODE_IN_COMMUNICATION
+                || mode == AudioManager.MODE_RINGTONE;
+    }
+
+    String audioModeSummary() {
+        int mode = audioManager.getMode();
+        switch (mode) {
+            case AudioManager.MODE_NORMAL:
+                return "MODE_NORMAL";
+            case AudioManager.MODE_RINGTONE:
+                return "MODE_RINGTONE";
+            case AudioManager.MODE_IN_CALL:
+                return "MODE_IN_CALL";
+            case AudioManager.MODE_IN_COMMUNICATION:
+                return "MODE_IN_COMMUNICATION";
+            default:
+                return "mode=" + mode;
+        }
     }
 
     int notificationStreamVolume() {
@@ -722,6 +762,7 @@ final class AudioRouteController {
         }
     }
 
+    @SuppressLint("WrongConstant")
     private AudioDeviceInfo findCommunicationDevice(RouteDevice selected) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return null;
@@ -738,6 +779,7 @@ final class AudioRouteController {
         return null;
     }
 
+    @SuppressLint("WrongConstant")
     private boolean isCurrentRoute(RouteDevice selected) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AudioDeviceInfo current = audioManager.getCommunicationDevice();
@@ -749,6 +791,20 @@ final class AudioRouteController {
                     || current.getId() == selected.id() && current.getType() == selected.type();
         }
         return selected.isBluetooth() && isBluetoothScoOn();
+    }
+
+    private boolean isCurrentCommunicationRouteOwned() {
+        if (ownedCommunicationRouteKey == null) {
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            if (current == null) {
+                return false;
+            }
+            return ownedCommunicationRouteKey.equals(RouteDevice.from(current).key());
+        }
+        return isBluetoothScoOn();
     }
 
     @SuppressWarnings("deprecation")
