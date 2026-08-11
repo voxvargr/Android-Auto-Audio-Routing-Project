@@ -1,0 +1,323 @@
+AAARP VOICE-REPLY / SOURCE-PROVENANCE HANDOFF
+Prepared: 2026-08-11 (America/Chicago)
+Desktop checkout: E:\Android-Auto-Audio-Routing-Project
+
+IMPORTANT STATUS
+================
+
+This desktop checkout is NOT the exact source used to build the AAARP APK that is
+currently installed on the phone. The changes in this checkout are a suggested,
+source-only patch for review and manual integration into the laptop's newer source.
+
+Do not build or install the desktop checkout over the phone. It could remove the
+laptop-only GPS warm-up feature and other unpublished changes. No build or install
+was performed while preparing this handoff.
+
+
+1. SOURCE AND APK PROVENANCE
+============================
+
+Desktop repository before the suggested patch:
+
+- Branch: main
+- HEAD: 67c7f36870d70c70ea0655e724f4bb7a2745184e
+- Commit time/subject: 2026-08-03 07:26:07 -0500, "small update"
+- The working tree was clean before this handoff patch.
+- Local origin/main and a live read-only git ls-remote check of public main both
+  returned the same commit above.
+
+Phone installation:
+
+- Device: NX809J / Android 16
+- Package: dev.voxvargr.aaarp
+- versionName: 0.1.0
+- versionCode: 1
+- First installed: 2026-07-21 07:18:19
+- Last updated: 2026-08-03 10:24:17
+- Installed base APK SHA-256:
+  68f82eaad6c3c101f920f9ea0dcfec353ca6beb7b9a6fd0a333937efcba43888
+
+Proof that the installed source is different/newer:
+
+- The phone-generated diagnostic contains:
+    Warm up GPS when Android Auto starts: on
+    GPS warm-up permission: ready
+- No GPS warm-up implementation or those strings exist in desktop main, its
+  reachable history, or the inspected unreachable objects.
+
+The existing desktop app-debug.apk is stale and must not be installed:
+
+- Path: app\build\outputs\apk\debug\app-debug.apk
+- Modified: 2026-07-27 16:51:39 -0500
+- SHA-256:
+  E92F0786DEF186B3AC1DAB60E609497D566F32DAB52701CB8FC1469E58C80A81
+- It predates the recovered media-boost and later call-protection commits.
+
+Because every build still reports 0.1.0/code 1, those version fields do not prove
+that two APKs contain the same code. Preserve the laptop source and its built APK
+before merging anything.
+
+
+2. VOICE-REPLY INCIDENT
+=======================
+
+The relevant interaction was 2026-08-11 at approximately 14:57 local time.
+
+- 14:57:16.615: com.google.android.googlequicksearchbox requested transient,
+  exclusive audio focus. YouTube Music lost focus.
+- 14:57:17.258 through 14:57:45.079: Google emitted alternating speech and
+  prompt/sonification players. The longest observed gap was about 8.5 seconds,
+  consistent with a listen/wait window.
+- 14:57:45.933: Google abandoned focus and music regained focus.
+- 14:58:00.375: Telecom requested voice-communication focus for the call.
+- 14:58:01.445: the system entered MODE_IN_CALL.
+- 15:05:36.408: Telecom released focus, consistent with a call lasting about
+  7 minutes 36 seconds.
+
+AAARP auto-log during the Google interaction:
+
+- audioMode=MODE_NORMAL for the entire Assistant exchange.
+- routeActive=false.
+- currentRoute=NX809J - Earpiece - output.
+- AAARP repeatedly logged stage=route_skipped_generic_sco because Android exposed
+  only a generic Bluetooth SCO route and no call/communication mode was active.
+- At 14:57:30.321, during the exchange, AAARP pulsed the OpenDots A2DP media path:
+    A2dpSuspended=false
+    setBluetoothA2dpOn(true)=ok
+- AAARP did not log a SCO clear, route reassert, or
+  "Bluetooth SCO route paused during media playback" during this incident.
+- Once MODE_IN_CALL began, AAARP correctly cleared its call-sensitive media
+  effects/mute and logged that it left the route alone.
+
+Microphone evidence:
+
+- The original saved diagnostic hit its 32K cap before the August 11 recording
+  history, so that file alone cannot identify the microphone.
+- A live read-only query of the full retained history found no 14:57 Google,
+  Gearhead, or VOICE_RECOGNITION recording event.
+- At the 14:57:52 AAARP root snapshot, Recorder port map was empty, vendor
+  IsRecording flags were false, and the microphone was not muted.
+- Google app RECORD_AUDIO app-op had no access time near the incident; Gearhead
+  also had no access time near it.
+- The later phone-call capture was inconsistently represented in Android's
+  recording ledger, so absence from that ledger is not absolute proof that no
+  audio existed. Android Auto can also have a head-unit/remote capture path that
+  is not represented as a normal phone-side AudioRecord.
+
+Best-supported interpretation:
+
+- Google reached the spoken reply workflow, but the evidence favors "no usable
+  Assistant listening/capture path was established" over "Google captured the
+  OpenDots microphone and merely misunderstood the words."
+- The working call proves the Telecom/HFP call path and its microphone worked.
+  It does not prove the separate Assistant/Android Auto capture path worked.
+- AAARP did not explicitly select a microphone during the reply. Its one plausible
+  indirect interaction was restoring/pinning A2DP during the exchange, which can
+  work against the SCO/voice transition needed by some headsets.
+- This is a strong hypothesis, not a proven root cause. A controlled A/B test is
+  still required.
+
+Google documents voice replies as supported in Android Auto:
+https://support.google.com/androidauto/answer/6348317?hl=en
+
+
+3. SUGGESTED DESKTOP PATCH
+==========================
+
+The desktop working tree now contains a conservative patch to transplant by
+reviewing the diff, not by replacing the laptop files wholesale.
+
+A. Assistant/guidance routing guard
+
+File:
+  app\src\main\java\dev\voxvargr\aaarp\RoutingMonitorService.java
+
+- Registers AudioManager.AudioPlaybackCallback on Android 8/API 26 and newer.
+- Detects USAGE_ASSISTANT and the incident's
+  USAGE_ASSISTANCE_NAVIGATION_GUIDANCE playback.
+- Holds a 12-second elapsed-time grace after playback ends so the guard spans the
+  observed silent listening gaps.
+- Keeps call/ring/communication protection at higher priority.
+- While guarded, AAARP stops making new SCO/A2DP routing changes and suspends only
+  its media-strategy/A2DP pin (including the Gearhead focus block).
+- It deliberately does not clear an existing communication/SCO route because that
+  route may already be the desired OpenDots microphone.
+- After the guard, it restores only the media pin it suspended.
+- Stop/disconnect cleanup clears the media role whether it is active or marked
+  suspended, avoiding a leaked root media role if an async clear failed.
+- Adds throttled "assistant audio guard" auto-log entries.
+
+Known limitations:
+
+- Detection is usage-based, not package-based. Normal Maps/Waze navigation speech
+  can conservatively trigger the same 12-second yield.
+- A Gemini/Assistant implementation that labels all output MEDIA or UNKNOWN could
+  be missed.
+- The patch yields AAARP interference; it cannot guarantee Android Auto will pick
+  OpenDots rather than the head-unit microphone.
+- The 12-second value covers this incident's roughly 8.5-second gaps but needs a
+  real-device A/B test.
+- Android below API 26 keeps the old behavior.
+
+B. Diagnostics prioritized for voice failures
+
+File:
+  app\src\main\java\dev\voxvargr\aaarp\RootShell.java
+
+- Puts recent recording activity and current AudioPolicy input clients before
+  large focus/policy dumps so they survive the 32K Java output cap.
+- Captures the current focus stack separately from a bounded recent focus history.
+- Keeps the last/top focus owner on deep focus stacks.
+- Adds installed package timestamps, base APK path, and base APK SHA-256.
+- Replaces oversized stale Wi-Fi history with bounded current-only Wi-Fi evidence.
+- Applies the same priorities to periodic auto-log root snapshots.
+
+The revised shell commands were executed read-only against the phone:
+
+- Manual diagnostic shell: exit 0, about 626 ms. Important sections appeared
+  before the 32K cap.
+- Auto snapshot: exit 0, about 452 ms, about 26.6K characters, fully under cap.
+
+C. Non-root installed-build identity in saved diagnostics
+
+Files:
+  app\src\main\java\dev\voxvargr\aaarp\BuildIdentity.java
+  app\src\main\java\dev\voxvargr\aaarp\MainActivity.java
+
+- Saved diagnostics now include package/version, first-install and last-update
+  times, and SHA-256 of the app's installed base APK.
+- This works without root and prevents two different 0.1.0/code-1 APKs from being
+  mistaken for each other.
+- An APK hash identifies the exact artifact, not its source commit. Record the
+  laptop's HEAD, dirty diff, and built APK hash together. A generated Git SHA/dirty
+  BuildConfig field would be a useful later improvement.
+
+These edits were intentionally NOT compiled on this desktop because the source is
+not the phone's authoritative GPS-capable tree.
+
+
+4. LAPTOP INTEGRATION ORDER
+===========================
+
+1. Preserve the laptop's authoritative work before syncing or merging:
+
+   git status --short --branch
+   git rev-parse HEAD
+   git status --porcelain=v1
+   git diff
+
+   Commit it to a recovery branch or make another recoverable copy first. Do not
+   discard uncommitted GPS/source changes.
+
+2. Confirm the laptop really owns the installed feature source:
+
+   rg -n -i "Warm up GPS|GPS warm-up permission|warm.?up|LocationManager" app/src/main
+
+3. Compare the laptop tree with desktop/public main. Integrate the suggested
+   changes semantically or as a small three-way patch. Do not copy entire desktop
+   Java files over newer laptop versions.
+
+4. Resolve any overlap around:
+
+   - RoutingMonitorService.applyFromPrefs/onCreate/onDestroy
+   - media-pin state and cleanup
+   - RootShell diagnostics()/autoLogSnapshot()
+   - MainActivity.buildDiagnosticsReport()
+
+5. Give the merged build a unique versionCode/versionName or add generated Git
+   revision + dirty-state metadata. Keep the APK SHA in diagnostics either way.
+
+6. Only after the merge is reviewed, build on the laptop:
+
+   .\gradlew.bat assembleDebug lintDebug testDebugUnitTest --stacktrace
+
+   Do not treat testDebugUnitTest as coverage if Gradle reports NO-SOURCE. Confirm
+   lint introduces no minSdk-23/API-26 callback/verifier issue.
+
+7. Record exact build provenance before installation:
+
+   $apk = Resolve-Path .\app\build\outputs\apk\debug\app-debug.apk
+   Get-Item $apk | Format-List FullName,Length,LastWriteTime
+   Get-FileHash -Algorithm SHA256 $apk
+   Get-Content .\app\build\outputs\apk\debug\output-metadata.json
+   git rev-parse HEAD
+   git status --porcelain=v1
+
+8. Confirm the laptop uses the same signing key as the installed APK before any
+   replace install. Back up AAARP settings and preserve the currently installed
+   APK/source state first.
+
+
+5. REQUIRED A/B TEST
+====================
+
+Use a safe test contact/message and capture logs from at least 10 seconds before
+opening the notification until 20 seconds after the reply result.
+
+Test A - current behavior/reference:
+
+- Android Auto connected to CARLINK_DA225A48A.
+- OpenDots connected for HFP and A2DP.
+- Keep media on Bluetooth during Android Auto: on.
+- Avoid call-quality Bluetooth during media playback: on.
+- Start music, open/read a test notification, wait for the reply tone, and speak a
+  fixed unusual phrase.
+
+Test B - merged Assistant guard:
+
+- Repeat under the same conditions with the merged laptop build.
+- Expected auto-log:
+    assistant audio guard active usage=...
+    assistant audio guard suspended AAARP media pin
+    assistant audio guard yielded ...
+    assistant audio guard ended; restoring AAARP media pin
+- There must be no A2dpSuspended=false / setBluetoothA2dpOn(true) pin pulse during
+  the guarded listen window.
+- Google should repeat the dictated phrase and ask to send it.
+
+If Test B still fails:
+
+- With explicit approval, temporarily turn OFF only "Keep media on Bluetooth
+  during Android Auto" and repeat. This isolates the media pin from the rest of
+  AAARP.
+- Do not turn off the SCO safety setting at the same time; change one variable per
+  run.
+- Determine whether the Carlink unit has a working microphone and whether Android
+  Auto is listening there instead of OpenDots.
+- Capture current AudioPolicy Inputs while the listening tone is active. A saved
+  diagnostic after the interaction is helpful, but a live capture is stronger.
+
+Regression checks after a successful reply:
+
+- Music returns to OpenDots A2DP after the 12-second grace.
+- An outgoing and incoming phone call still use the expected headset mic.
+- A Maps navigation prompt may trigger the conservative guard, but audio should
+  recover and the media pin should restore.
+- Disconnecting Android Auto during a guarded window must not leave a forced media
+  strategy or Gearhead TAKE_AUDIO_FOCUS app-op behind.
+- Stopping AAARP during a guarded window must perform the same cleanup.
+
+
+6. SUCCESS CRITERIA
+===================
+
+Do not call this fixed until all of the following are true:
+
+- Laptop source containing GPS warm-up is preserved and identified.
+- The merged source builds and lint has no new relevant errors.
+- The exact built APK hash, source HEAD, and dirty state are recorded.
+- The installed APK is confirmed to be that artifact.
+- Voice reply transcribes and repeats the fixed test phrase at least three times.
+- No AAARP A2DP pin pulse occurs during the guarded Assistant window.
+- Calls, music recovery, Android Auto disconnect, and service-stop cleanup pass.
+
+
+7. ACTIONS NOT PERFORMED ON THE DESKTOP
+========================================
+
+- No phone setting or AAARP preference was changed.
+- No APK was pulled from the phone.
+- No APK was built, signed, installed, replaced, or uninstalled.
+- No source was fetched, reset, checked out, committed, or pushed.
+- The phone investigation and shell validation were read-only.
+

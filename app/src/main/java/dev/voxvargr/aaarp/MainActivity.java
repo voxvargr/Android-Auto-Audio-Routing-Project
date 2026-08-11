@@ -652,6 +652,7 @@ public final class MainActivity extends Activity {
         ProfileSettings.MonitorSettings settings = ProfileSettings.monitorSettings(this, connection);
         StringBuilder report = new StringBuilder();
         report.append("AAARP diagnostics\n");
+        report.append(BuildIdentity.describe(this));
         report.append("Android Auto installed: ").append(AndroidAutoStatus.isInstalled(this) ? "yes" : "no").append('\n');
         report.append("Current communication route: ").append(controller.currentCommunicationDevice()).append('\n');
         report.append("Available input routes:\n").append(controller.inputRouteSummary()).append('\n');
