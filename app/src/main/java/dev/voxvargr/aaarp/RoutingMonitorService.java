@@ -5,14 +5,21 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.annotation.TargetApi;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
 import android.content.SharedPreferences;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.AudioPlaybackConfiguration;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
+
+import java.util.List;
 
 public final class RoutingMonitorService extends Service {
     static final String ACTION_START = "dev.voxvargr.aaarp.START";
@@ -28,12 +35,17 @@ public final class RoutingMonitorService extends Service {
     private static final long AUTO_LOG_ROOT_SNAPSHOT_MS = 120000L;
     private static final long NOTIFICATION_PLAYBACK_IDLE_GRACE_MS = 15000L;
     private static final long MEDIA_BOOST_ANDROID_AUTO_IDLE_GRACE_MS = 120000L;
+    private static final long ASSISTANT_AUDIO_GRACE_MS = 12000L;
     private static final int AUTO_STOP_MISSES = 3;
     private static final int MEDIA_BOOST_VOLUME_FLOOR_PERCENT = 92;
 
     private Handler handler;
     private AudioRouteController controller;
     private LocationWarmup locationWarmup;
+    private AudioManager audioManager;
+    private AudioManager.AudioPlaybackCallback audioPlaybackCallback;
+    private boolean assistantPlaybackActive;
+    private long assistantAudioGuardUntilElapsed;
     private boolean androidAutoSeen;
     private int androidAutoMisses;
     private boolean foregroundLocationTypeActive;
@@ -45,6 +57,7 @@ public final class RoutingMonitorService extends Service {
     private boolean audioTweakDuckingActive;
     private boolean audioTweakNotificationRouteActive;
     private boolean audioTweakMediaRouteActive;
+    private boolean audioTweakMediaRouteSuspendedForAssistant;
     private boolean notificationPlaybackMuteActive;
     private boolean notificationPlaybackMuteOwned;
     private int notificationPlaybackRestoreVolume = -1;
@@ -63,6 +76,8 @@ public final class RoutingMonitorService extends Service {
     private String lastMediaBoostSummary;
     private long lastCallProtectionLogAt;
     private String lastCallProtectionSummary;
+    private long lastAssistantProtectionLogAt;
+    private String lastAssistantProtectionSummary;
     private boolean rootSnapshotRunning;
     private String lastAutoLogSummary;
     private final Runnable applyLoop = new Runnable() {
@@ -81,6 +96,8 @@ public final class RoutingMonitorService extends Service {
         handler = new Handler(Looper.getMainLooper());
         controller = new AudioRouteController(this);
         locationWarmup = new LocationWarmup(this, handler, this::autoLog);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        startAssistantAudioGuard();
         createNotificationChannel();
     }
 
@@ -113,6 +130,7 @@ public final class RoutingMonitorService extends Service {
     public void onDestroy() {
         handler.removeCallbacks(applyLoop);
         stopLocationWarmup("service destroyed");
+        stopAssistantAudioGuard();
         clearAudioTweaksIfNeeded();
         clearNotificationPlaybackMuteIfNeeded();
         clearMediaBoostIfNeeded();
@@ -131,6 +149,11 @@ public final class RoutingMonitorService extends Service {
 
         if (isCallOrCommunicationActive()) {
             handleCallOrCommunicationProtection(settings);
+            return ROUTE_CHECK_INTERVAL_MS;
+        }
+
+        if (isAssistantAudioGuardActive()) {
+            handleAssistantAudioProtection(settings);
             return ROUTE_CHECK_INTERVAL_MS;
         }
 
@@ -329,6 +352,11 @@ public final class RoutingMonitorService extends Service {
             return;
         }
         if (tweakKey.equals(activeAudioTweakKey)) {
+            resumePinnedMediaAfterAssistantIfNeeded(
+                    pinMediaToBluetooth,
+                    settings.selectedDeviceKey,
+                    settings.preferredBluetoothTarget
+            );
             return;
         }
         clearAudioTweaksIfNeeded();
@@ -355,16 +383,19 @@ public final class RoutingMonitorService extends Service {
         if (activeAudioTweakKey == null
                 && !audioTweakDuckingActive
                 && !audioTweakNotificationRouteActive
-                && !audioTweakMediaRouteActive) {
+                && !audioTweakMediaRouteActive
+                && !audioTweakMediaRouteSuspendedForAssistant) {
             return;
         }
         boolean restoreDucking = audioTweakDuckingActive;
         boolean clearNotificationRoute = audioTweakNotificationRouteActive;
-        boolean clearMediaRoute = audioTweakMediaRouteActive;
+        boolean clearMediaRoute = audioTweakMediaRouteActive
+                || audioTweakMediaRouteSuspendedForAssistant;
         activeAudioTweakKey = null;
         audioTweakDuckingActive = false;
         audioTweakNotificationRouteActive = false;
         audioTweakMediaRouteActive = false;
+        audioTweakMediaRouteSuspendedForAssistant = false;
         autoLog("clearing audio tweaks restoreDucking=" + restoreDucking
                 + " clearNotificationRoute=" + clearNotificationRoute
                 + " clearMediaRoute=" + clearMediaRoute);
@@ -788,6 +819,147 @@ public final class RoutingMonitorService extends Service {
     private boolean recentlyHadMediaPlayback(long idleGraceMs) {
         return lastMediaPlaybackActiveAt > 0L
                 && System.currentTimeMillis() - lastMediaPlaybackActiveAt <= idleGraceMs;
+    }
+
+    private void startAssistantAudioGuard() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || audioManager == null) {
+            return;
+        }
+
+        audioPlaybackCallback = new AudioManager.AudioPlaybackCallback() {
+            @Override
+            public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs) {
+                updateAssistantAudioGuard(configs);
+            }
+        };
+        try {
+            audioManager.registerAudioPlaybackCallback(audioPlaybackCallback, handler);
+        } catch (RuntimeException e) {
+            audioPlaybackCallback = null;
+            autoLog("assistant audio guard registration failed: " + e.getMessage());
+            return;
+        }
+
+        try {
+            updateAssistantAudioGuard(audioManager.getActivePlaybackConfigurations());
+        } catch (RuntimeException e) {
+            autoLog("assistant audio guard initial state failed: " + e.getMessage());
+        }
+    }
+
+    private void stopAssistantAudioGuard() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                && audioManager != null
+                && audioPlaybackCallback != null) {
+            try {
+                audioManager.unregisterAudioPlaybackCallback(audioPlaybackCallback);
+            } catch (RuntimeException e) {
+                autoLog("assistant audio guard unregister failed: " + e.getMessage());
+            }
+        }
+        audioPlaybackCallback = null;
+        assistantPlaybackActive = false;
+        assistantAudioGuardUntilElapsed = 0L;
+    }
+
+    private void updateAssistantAudioGuard(List<AudioPlaybackConfiguration> configs) {
+        int assistantUsage = activeAssistantUsage(configs);
+        long now = SystemClock.elapsedRealtime();
+        if (assistantUsage >= 0) {
+            if (!assistantPlaybackActive) {
+                autoLog("assistant audio guard active usage=" + assistantUsage);
+            }
+            assistantPlaybackActive = true;
+            assistantAudioGuardUntilElapsed = now + ASSISTANT_AUDIO_GRACE_MS;
+            return;
+        }
+
+        if (assistantPlaybackActive) {
+            assistantPlaybackActive = false;
+            assistantAudioGuardUntilElapsed = now + ASSISTANT_AUDIO_GRACE_MS;
+            autoLog("assistant playback ended; routing guard held for "
+                    + ASSISTANT_AUDIO_GRACE_MS + "ms");
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.O)
+    private int activeAssistantUsage(List<AudioPlaybackConfiguration> configs) {
+        if (configs == null) {
+            return -1;
+        }
+        for (AudioPlaybackConfiguration config : configs) {
+            if (config == null) {
+                continue;
+            }
+            AudioAttributes attributes = config.getAudioAttributes();
+            if (attributes == null) {
+                continue;
+            }
+            int usage = attributes.getUsage();
+            if (usage == AudioAttributes.USAGE_ASSISTANT
+                    || usage == AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE) {
+                return usage;
+            }
+        }
+        return -1;
+    }
+
+    private boolean isAssistantAudioGuardActive() {
+        return assistantPlaybackActive
+                || SystemClock.elapsedRealtime() < assistantAudioGuardUntilElapsed;
+    }
+
+    private void handleAssistantAudioProtection(ProfileSettings.MonitorSettings settings) {
+        boolean suspendedMediaPin = suspendPinnedMediaForAssistantIfNeeded();
+        logAssistantProtection(settings, suspendedMediaPin);
+    }
+
+    private boolean suspendPinnedMediaForAssistantIfNeeded() {
+        if (!audioTweakMediaRouteActive) {
+            return false;
+        }
+        audioTweakMediaRouteActive = false;
+        audioTweakMediaRouteSuspendedForAssistant = true;
+        new Thread(() -> controller.clearAndroidAutoAudioTweaks(false, false, true),
+                "aaarp-assistant-media-pin-clear").start();
+        autoLog("assistant audio guard suspended AAARP media pin");
+        return true;
+    }
+
+    private void resumePinnedMediaAfterAssistantIfNeeded(boolean pinMediaToBluetooth,
+                                                          String selectedDeviceKey,
+                                                          String preferredBluetoothTarget) {
+        if (!pinMediaToBluetooth || !audioTweakMediaRouteSuspendedForAssistant) {
+            return;
+        }
+        audioTweakMediaRouteSuspendedForAssistant = false;
+        audioTweakMediaRouteActive = true;
+        new Thread(() -> controller.applyAndroidAutoAudioTweaks(
+                AppPrefs.NOTIFICATION_ROUTE_OFF,
+                selectedDeviceKey,
+                preferredBluetoothTarget,
+                false,
+                true
+        ), "aaarp-assistant-media-pin-restore").start();
+        autoLog("assistant audio guard ended; restoring AAARP media pin");
+    }
+
+    private void logAssistantProtection(ProfileSettings.MonitorSettings settings,
+                                          boolean suspendedMediaPin) {
+        long now = System.currentTimeMillis();
+        String summary = "assistant audio guard yielded"
+                + " assistantPlayback=" + assistantPlaybackActive
+                + " suspendedMediaPin=" + suspendedMediaPin
+                + " routeActive=" + routeActiveForTarget
+                + " currentRoute=" + controller.currentCommunicationDevice()
+                + " profile=" + settings.profileId
+                + " target=" + settings.preferredBluetoothTarget;
+        boolean changed = !summary.equals(lastAssistantProtectionSummary);
+        if (changed || now - lastAssistantProtectionLogAt >= AUTO_LOG_HEARTBEAT_MS) {
+            lastAssistantProtectionSummary = summary;
+            lastAssistantProtectionLogAt = now;
+            autoLog(summary);
+        }
     }
 
     private boolean isCallOrCommunicationActive() {
