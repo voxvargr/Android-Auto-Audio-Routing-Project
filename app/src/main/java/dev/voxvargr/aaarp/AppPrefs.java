@@ -12,6 +12,7 @@ final class AppPrefs {
     static final String USE_ROOT = "use_root";
     static final String MONITOR_ENABLED = "monitor_enabled";
     static final String WATCHDOG_MODE = "watchdog_mode";
+    static final String GPS_WARMUP_DURING_ANDROID_AUTO = "gps_warmup_during_android_auto";
     static final String RESTORE_MONITOR_AFTER_BOOT = "restore_monitor_after_boot";
     static final String AUTO_STOP_AFTER_ANDROID_AUTO = "auto_stop_after_android_auto";
     static final String RELEASE_ROUTE_AFTER_ANDROID_AUTO = "release_route_after_android_auto";

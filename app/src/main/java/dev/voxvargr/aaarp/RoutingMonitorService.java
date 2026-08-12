@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
 import android.content.SharedPreferences;
 import android.os.Build;
@@ -25,14 +26,17 @@ public final class RoutingMonitorService extends Service {
     private static final long ANDROID_AUTO_IDLE_CHECK_INTERVAL_MS = 5000L;
     private static final long AUTO_LOG_HEARTBEAT_MS = 30000L;
     private static final long AUTO_LOG_ROOT_SNAPSHOT_MS = 120000L;
-    private static final long PLAYBACK_IDLE_GRACE_MS = 15000L;
+    private static final long NOTIFICATION_PLAYBACK_IDLE_GRACE_MS = 15000L;
+    private static final long MEDIA_BOOST_ANDROID_AUTO_IDLE_GRACE_MS = 120000L;
     private static final int AUTO_STOP_MISSES = 3;
     private static final int MEDIA_BOOST_VOLUME_FLOOR_PERCENT = 92;
 
     private Handler handler;
     private AudioRouteController controller;
+    private LocationWarmup locationWarmup;
     private boolean androidAutoSeen;
     private int androidAutoMisses;
+    private boolean foregroundLocationTypeActive;
     private boolean routeReleasedAfterDisconnect;
     private boolean routeActiveForTarget;
     private boolean targetWasActiveThisSession;
@@ -76,6 +80,7 @@ public final class RoutingMonitorService extends Service {
         super.onCreate();
         handler = new Handler(Looper.getMainLooper());
         controller = new AudioRouteController(this);
+        locationWarmup = new LocationWarmup(this, handler, this::autoLog);
         createNotificationChannel();
     }
 
@@ -92,7 +97,7 @@ public final class RoutingMonitorService extends Service {
             return START_NOT_STICKY;
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification());
+        startForegroundCompat(false);
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, true).apply();
         autoLog("monitor start action=" + action + " logs=" + AutoLogWriter.location(this));
         handler.removeCallbacks(applyLoop);
@@ -107,6 +112,7 @@ public final class RoutingMonitorService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(applyLoop);
+        stopLocationWarmup("service destroyed");
         clearAudioTweaksIfNeeded();
         clearNotificationPlaybackMuteIfNeeded();
         clearMediaBoostIfNeeded();
@@ -136,6 +142,7 @@ public final class RoutingMonitorService extends Service {
                     androidAutoMisses++;
                     if (androidAutoMisses >= AUTO_STOP_MISSES) {
                         autoLog("android auto disconnected; misses=" + androidAutoMisses);
+                        stopLocationWarmup("android auto disconnected");
                         clearAudioTweaksIfNeeded();
                         if (settings.releaseAfterAndroidAuto && !routeReleasedAfterDisconnect) {
                             controller.clearRoute();
@@ -165,6 +172,7 @@ public final class RoutingMonitorService extends Service {
                 targetWasActiveThisSession = false;
                 bluetoothResetAfterDisconnect = false;
                 autoLog("android auto connected profile=" + settings.profileId + " source=" + connection.label());
+                startLocationWarmupIfNeeded(settings, connection);
             }
             androidAutoSeen = true;
             androidAutoMisses = 0;
@@ -420,7 +428,8 @@ public final class RoutingMonitorService extends Service {
         if (playbackActive) {
             lastMediaPlaybackActiveAt = System.currentTimeMillis();
             muteNotificationsForPlaybackIfNeeded(androidAutoActive);
-        } else if (notificationPlaybackMuteActive && recentlyHadMediaPlayback()) {
+        } else if (notificationPlaybackMuteActive
+                && recentlyHadMediaPlayback(NOTIFICATION_PLAYBACK_IDLE_GRACE_MS)) {
             autoLog("notification stream mute held during brief playback gap androidAutoActive="
                     + androidAutoActive);
         } else {
@@ -455,8 +464,10 @@ public final class RoutingMonitorService extends Service {
         }
 
         if (!playbackActive) {
-            if (mediaBoostActive && recentlyHadMediaPlayback()) {
-                logMediaBoost("media boost held during brief playback gap aa=" + androidAutoActive);
+            long idleGraceMs = mediaBoostIdleGraceMs(androidAutoActive);
+            if (mediaBoostActive && recentlyHadMediaPlayback(idleGraceMs)) {
+                logMediaBoost("media boost held during playback gap aa=" + androidAutoActive
+                        + " graceMs=" + idleGraceMs);
             } else {
                 clearMediaBoostIfNeeded();
             }
@@ -535,6 +546,12 @@ public final class RoutingMonitorService extends Service {
     private boolean shouldBoostMedia(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
         return settings.normalizeMediaDuringAndroidAuto
                 && (androidAutoActive || settings.normalizeMediaAlways);
+    }
+
+    private long mediaBoostIdleGraceMs(boolean androidAutoActive) {
+        return androidAutoActive
+                ? MEDIA_BOOST_ANDROID_AUTO_IDLE_GRACE_MS
+                : NOTIFICATION_PLAYBACK_IDLE_GRACE_MS;
     }
 
     private void clearMediaBoostIfNeeded() {
@@ -677,6 +694,7 @@ public final class RoutingMonitorService extends Service {
 
     private void stopMonitor() {
         autoLog("monitor stop requested");
+        stopLocationWarmup("monitor stopping");
         releaseRouteOnStopIfEnabled();
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, false).apply();
         handler.removeCallbacks(applyLoop);
@@ -713,6 +731,7 @@ public final class RoutingMonitorService extends Service {
                 + " currentRoute=" + controller.currentCommunicationDevice()
                 + " audioMode=" + controller.audioModeSummary()
                 + " pauseScoForMedia=" + settings.pauseBluetoothScoDuringMedia
+                + " gpsWarmup=" + settings.gpsWarmupDuringAndroidAuto
                 + " pinMediaToBluetooth=" + settings.pinMediaToBluetoothDuringAndroidAuto
                 + " normalizeMedia=" + settings.normalizeMediaDuringAndroidAuto
                 + " normalizeAlways=" + settings.normalizeMediaAlways
@@ -766,9 +785,9 @@ public final class RoutingMonitorService extends Service {
         return value == null ? "unknown" : (value ? "yes" : "no");
     }
 
-    private boolean recentlyHadMediaPlayback() {
+    private boolean recentlyHadMediaPlayback(long idleGraceMs) {
         return lastMediaPlaybackActiveAt > 0L
-                && System.currentTimeMillis() - lastMediaPlaybackActiveAt <= PLAYBACK_IDLE_GRACE_MS;
+                && System.currentTimeMillis() - lastMediaPlaybackActiveAt <= idleGraceMs;
     }
 
     private boolean isCallOrCommunicationActive() {
@@ -803,6 +822,80 @@ public final class RoutingMonitorService extends Service {
             lastCallProtectionLogAt = now;
             autoLog(summary);
         }
+    }
+
+    private void startLocationWarmupIfNeeded(ProfileSettings.MonitorSettings settings,
+                                             AndroidAutoConnection connection) {
+        if (!settings.gpsWarmupDuringAndroidAuto) {
+            return;
+        }
+        if (locationWarmup == null) {
+            autoLog("gps warmup skipped: helper unavailable");
+            return;
+        }
+        if (!LocationWarmup.hasPreciseLocationPermission(this)) {
+            autoLog("gps warmup skipped: precise location permission is not granted");
+            return;
+        }
+        if (!setForegroundLocationTypeActive(true)) {
+            autoLog("gps warmup skipped: Android rejected the foreground location service type");
+            return;
+        }
+        boolean started = locationWarmup.start(
+                "android auto connected source=" + connection.label(),
+                () -> setForegroundLocationTypeActive(false)
+        );
+        if (!started) {
+            setForegroundLocationTypeActive(false);
+        }
+    }
+
+    private void stopLocationWarmup(String reason) {
+        if (locationWarmup != null) {
+            locationWarmup.stop(reason);
+        }
+        setForegroundLocationTypeActive(false);
+    }
+
+    private boolean setForegroundLocationTypeActive(boolean active) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            foregroundLocationTypeActive = active;
+            return true;
+        }
+        if (foregroundLocationTypeActive == active) {
+            return true;
+        }
+
+        boolean previous = foregroundLocationTypeActive;
+        foregroundLocationTypeActive = active;
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification(), foregroundServiceTypes(active));
+            return true;
+        } catch (RuntimeException e) {
+            foregroundLocationTypeActive = previous;
+            autoLog("foreground location service type update failed active="
+                    + active
+                    + " error="
+                    + e.getMessage());
+            return false;
+        }
+    }
+
+    private void startForegroundCompat(boolean includeLocation) {
+        foregroundLocationTypeActive = includeLocation;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, buildNotification(), foregroundServiceTypes(includeLocation));
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification());
+        }
+    }
+
+    private int foregroundServiceTypes(boolean includeLocation) {
+        int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE;
+        if (includeLocation) {
+            types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+        }
+        return types;
     }
 
     private void stopForegroundCompat() {

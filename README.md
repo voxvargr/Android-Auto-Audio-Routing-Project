@@ -10,6 +10,8 @@ Current watchdog behavior: pick a default Bluetooth audio target, start the moni
 
 Profiles: use "Detect AA" while connected to a wireless Android Auto unit, tune the settings for that unit, then tap "Save Profile". AAARP maps the current Wi-Fi Android Auto identity to that profile and uses it automatically the next time that same unit is detected. If no saved profile matches, the Default profile is used.
 
+GPS warm-up: the optional "Warm up GPS when Android Auto starts" profile setting briefly asks Android's GPS provider for a fresh fix when Android Auto is first detected, then stops listening. This cannot force Google Maps to accept a location, but it can wake the phone's satellite location path before Maps times out. For phone-in-pocket startup, grant Precise Location and set Location to "Allow all the time" in Android's app permission screen.
+
 Android Auto sound tweaks are experimental root options. Notification routing tries to move Android's sonification strategy to speaker, earpiece, or the saved Bluetooth target while Android Auto is active, then clears it afterward. The ducking option temporarily blocks SystemUI audio focus while Android Auto is active, and can optionally stay active outside Android Auto while the monitor is running. Notification sounds can also be muted during media playback, with an optional always-on mode for non-Android Auto listening.
 
 

@@ -119,6 +119,7 @@ final class ProfileSettings {
         copyProfileString(prefs, editor, safeId, AppPrefs.CUSTOM_BLUETOOTH_QUERY);
         copyProfileString(prefs, editor, safeId, AppPrefs.NOTIFICATION_ROUTE_MODE);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.WATCHDOG_MODE, true);
+        copyProfileBoolean(prefs, editor, safeId, AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
@@ -143,6 +144,7 @@ final class ProfileSettings {
                 getString(prefs, profileId, AppPrefs.SELECTED_DEVICE_KEY, null),
                 getString(prefs, profileId, AppPrefs.PREFERRED_BLUETOOTH_QUERY, null),
                 getBoolean(prefs, profileId, AppPrefs.WATCHDOG_MODE, true),
+                getBoolean(prefs, profileId, AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false),
                 getBoolean(prefs, profileId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false),
                 getBoolean(prefs, profileId, AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true),
                 getBoolean(prefs, profileId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false),
@@ -184,6 +186,7 @@ final class ProfileSettings {
         putProfileString(prefs, editor, profileId, AppPrefs.CUSTOM_BLUETOOTH_QUERY);
         putProfileString(prefs, editor, profileId, AppPrefs.NOTIFICATION_ROUTE_MODE);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.WATCHDOG_MODE, true);
+        putProfileBoolean(prefs, editor, profileId, AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.RESET_BLUETOOTH_AFTER_ANDROID_AUTO, false);
@@ -293,6 +296,7 @@ final class ProfileSettings {
         final String selectedDeviceKey;
         final String preferredBluetoothTarget;
         final boolean watchdogMode;
+        final boolean gpsWarmupDuringAndroidAuto;
         final boolean autoStopAfterAndroidAuto;
         final boolean releaseAfterAndroidAuto;
         final boolean resetBluetoothAfterAndroidAuto;
@@ -310,6 +314,7 @@ final class ProfileSettings {
         final String profileId;
 
         MonitorSettings(String selectedDeviceKey, String preferredBluetoothTarget, boolean watchdogMode,
+                        boolean gpsWarmupDuringAndroidAuto,
                         boolean autoStopAfterAndroidAuto, boolean releaseAfterAndroidAuto,
                         boolean resetBluetoothAfterAndroidAuto, boolean pauseBluetoothScoDuringMedia,
                         boolean pinMediaToBluetoothDuringAndroidAuto,
@@ -323,6 +328,7 @@ final class ProfileSettings {
             this.selectedDeviceKey = selectedDeviceKey;
             this.preferredBluetoothTarget = preferredBluetoothTarget;
             this.watchdogMode = watchdogMode;
+            this.gpsWarmupDuringAndroidAuto = gpsWarmupDuringAndroidAuto;
             this.autoStopAfterAndroidAuto = autoStopAfterAndroidAuto;
             this.releaseAfterAndroidAuto = releaseAfterAndroidAuto;
             this.resetBluetoothAfterAndroidAuto = resetBluetoothAfterAndroidAuto;

@@ -70,6 +70,7 @@ public final class MainActivity extends Activity {
     private EditText preferredTargetEditText;
     private CheckBox rootCheckBox;
     private CheckBox watchdogCheckBox;
+    private CheckBox gpsWarmupDuringAndroidAutoCheckBox;
     private CheckBox restoreAfterBootCheckBox;
     private CheckBox releaseAfterDisconnectCheckBox;
     private CheckBox autoStopCheckBox;
@@ -110,6 +111,10 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_PERMISSIONS) {
             refreshDevices();
+            if (gpsWarmupDuringAndroidAutoCheckBox != null
+                    && gpsWarmupDuringAndroidAutoCheckBox.isChecked()) {
+                updateGpsWarmupPermissionLog();
+            }
         }
     }
 
@@ -243,6 +248,23 @@ public final class MainActivity extends Activity {
         watchdogCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
                 saveBooleanSetting(AppPrefs.WATCHDOG_MODE, isChecked));
         content.addView(watchdogCheckBox, blockParams());
+
+        gpsWarmupDuringAndroidAutoCheckBox = new CheckBox(this);
+        gpsWarmupDuringAndroidAutoCheckBox.setText("Warm up GPS when Android Auto starts");
+        gpsWarmupDuringAndroidAutoCheckBox.setTextColor(getColor(R.color.aaarp_text));
+        gpsWarmupDuringAndroidAutoCheckBox.setChecked(
+                prefBoolean(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false)
+        );
+        gpsWarmupDuringAndroidAutoCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveBooleanSetting(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, isChecked);
+            if (isChecked) {
+                requestGpsWarmupLocationAccess();
+            }
+        });
+        content.addView(gpsWarmupDuringAndroidAutoCheckBox, blockParams());
+
+        Button locationPermissionButton = button("Location Permission", v -> openLocationPermissionSettings());
+        content.addView(locationPermissionButton, blockParams());
 
         restoreAfterBootCheckBox = new CheckBox(this);
         restoreAfterBootCheckBox.setText("Restore monitor after reboot");
@@ -474,6 +496,7 @@ public final class MainActivity extends Activity {
         saveSelectedDevice();
         String preferredBluetoothTarget = savePreferredBluetoothTarget();
         saveNotificationRouteMode();
+        String gpsNote = gpsWarmupMonitorNote();
         Intent intent = new Intent(this, RoutingMonitorService.class).setAction(RoutingMonitorService.ACTION_START);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent);
@@ -484,12 +507,15 @@ public final class MainActivity extends Activity {
         updateStatus("Monitor running.");
         if (prefBoolean(AppPrefs.WATCHDOG_MODE, true)) {
             if (preferredBluetoothTarget.length() == 0) {
-                setLog("Watchdog started. Select a default Bluetooth audio target before AAARP will route Android Auto.");
+                setLog("Watchdog started. Select a default Bluetooth audio target before AAARP will route Android Auto."
+                        + gpsNote);
             } else {
-                setLog("Watchdog started. AAARP will wait for Android Auto and the default Bluetooth target, then maintain the selected route.");
+                setLog("Watchdog started. AAARP will wait for Android Auto and the default Bluetooth target, then maintain the selected route."
+                        + gpsNote);
             }
         } else {
-            setLog("Monitor started. AAARP will watch the selected route and only reset it if Android changes it.");
+            setLog("Monitor started. AAARP will watch the selected route and only reset it if Android changes it."
+                    + gpsNote);
         }
     }
 
@@ -659,6 +685,10 @@ public final class MainActivity extends Activity {
                 .append(" - ").append(connection.label()).append('\n');
         report.append("Watch Android Auto: ")
                 .append(settings.watchdogMode ? "on" : "off").append('\n');
+        report.append("Warm up GPS when Android Auto starts: ")
+                .append(settings.gpsWarmupDuringAndroidAuto ? "on" : "off").append('\n');
+        report.append("GPS warm-up permission: ")
+                .append(LocationWarmup.permissionSummary(this)).append('\n');
         report.append("Restore monitor after reboot: ")
                 .append(prefBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true) ? "on" : "off").append('\n');
         report.append("Default Bluetooth target: ")
@@ -827,9 +857,11 @@ public final class MainActivity extends Activity {
     private void updateStatus(String message) {
         boolean monitorEnabled = prefBoolean(AppPrefs.MONITOR_ENABLED, false);
         boolean watchdogEnabled = prefBoolean(AppPrefs.WATCHDOG_MODE, true);
+        boolean gpsWarmupEnabled = prefBoolean(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false);
         boolean restoreAfterBoot = prefBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true);
         statusView.setText(message + "\nMonitor: " + (monitorEnabled ? "on" : "off")
                 + "\nWatch Android Auto: " + (watchdogEnabled ? "on" : "off")
+                + "\nGPS warm-up: " + (gpsWarmupEnabled ? "on" : "off")
                 + "\nRestore after reboot: " + (restoreAfterBoot ? "on" : "off")
                 + "\nAndroid Auto package: " + (AndroidAutoStatus.isInstalled(this) ? "installed" : "not found"));
     }
@@ -914,6 +946,9 @@ public final class MainActivity extends Activity {
     private void restoreSettingsControls() {
         rootCheckBox.setChecked(prefBoolean(AppPrefs.USE_ROOT, false));
         watchdogCheckBox.setChecked(prefBoolean(AppPrefs.WATCHDOG_MODE, true));
+        gpsWarmupDuringAndroidAutoCheckBox.setChecked(
+                prefBoolean(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false)
+        );
         restoreAfterBootCheckBox.setChecked(prefBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true));
         releaseAfterDisconnectCheckBox.setChecked(prefBoolean(AppPrefs.RELEASE_ROUTE_AFTER_ANDROID_AUTO, true));
         autoStopCheckBox.setChecked(prefBoolean(AppPrefs.AUTO_STOP_AFTER_ANDROID_AUTO, false));
@@ -1084,6 +1119,9 @@ public final class MainActivity extends Activity {
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS);
         }
+        if (prefBoolean(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false)) {
+            addGpsWarmupLocationPermissions(permissions);
+        }
 
         if (!permissions.isEmpty()) {
             try {
@@ -1091,6 +1129,76 @@ public final class MainActivity extends Activity {
             } catch (RuntimeException e) {
                 setLog("Permission request skipped: " + e.getMessage());
             }
+        }
+    }
+
+    private void requestGpsWarmupLocationAccess() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            setLog("GPS warm-up is enabled.");
+            return;
+        }
+        List<String> permissions = new ArrayList<>();
+        addGpsWarmupLocationPermissions(permissions);
+        if (!permissions.isEmpty()) {
+            try {
+                requestPermissions(permissions.toArray(new String[0]), REQUEST_PERMISSIONS);
+                setLog("Precise location permission is needed for GPS warm-up.");
+            } catch (RuntimeException e) {
+                setLog("Location permission request skipped: " + e.getMessage());
+            }
+            return;
+        }
+        updateGpsWarmupPermissionLog();
+    }
+
+    private void addGpsWarmupLocationPermissions(List<String> permissions) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+    }
+
+    private void updateGpsWarmupPermissionLog() {
+        if (!prefBoolean(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false)) {
+            return;
+        }
+        if (!LocationWarmup.hasPreciseLocationPermission(this)) {
+            setLog("GPS warm-up is on, but Precise Location permission is missing.");
+            return;
+        }
+        if (!LocationWarmup.hasBackgroundLocationPermission(this)) {
+            setLog("GPS warm-up is on. For phone-in-pocket startup, open Location Permission and set Location to Allow all the time.");
+            return;
+        }
+        setLog("GPS warm-up is ready. AAARP will briefly ask GPS for a fresh fix when Android Auto starts.");
+    }
+
+    private String gpsWarmupMonitorNote() {
+        if (!prefBoolean(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false)) {
+            return "";
+        }
+        if (!LocationWarmup.hasPreciseLocationPermission(this)) {
+            return "\nGPS warm-up is on, but Precise Location permission is missing.";
+        }
+        if (!LocationWarmup.hasBackgroundLocationPermission(this)) {
+            return "\nGPS warm-up is on. For phone-in-pocket startup, set Location to Allow all the time.";
+        }
+        return "\nGPS warm-up is on.";
+    }
+
+    private void openLocationPermissionSettings() {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        intent.setData(Uri.parse("package:" + getPackageName()));
+        try {
+            startActivity(intent);
+        } catch (RuntimeException e) {
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
         }
     }
 
