@@ -24,7 +24,7 @@ final class AutoLogWriter {
     private AutoLogWriter() {
     }
 
-    static void append(Context context, String text) {
+    static synchronized void append(Context context, String text) {
         try {
             File file = logFile(context);
             String line = LINE_FORMAT.format(new Date()) + " " + clean(text) + "\n";

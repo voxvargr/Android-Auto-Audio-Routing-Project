@@ -19,3 +19,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+dependencies {
+    implementation("androidx.media:media:1.8.0")
+
+    testImplementation("junit:junit:4.13.2")
+}

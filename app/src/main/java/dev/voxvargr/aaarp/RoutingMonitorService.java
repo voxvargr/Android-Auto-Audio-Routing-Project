@@ -64,6 +64,7 @@ public final class RoutingMonitorService extends Service {
     private boolean mediaBoostActive;
     private boolean mediaBoostVolumeOwned;
     private boolean mediaBoostVolumeUserControlled;
+    private long manualMediaVolumeGeneration;
     private int mediaBoostRestoreVolume = -1;
     private int mediaBoostRaisedVolume = -1;
     private String activeMediaBoostKey;
@@ -97,6 +98,7 @@ public final class RoutingMonitorService extends Service {
         controller = new AudioRouteController(this);
         locationWarmup = new LocationWarmup(this, handler, this::autoLog);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        acknowledgeManualMediaVolumeGeneration();
         startAssistantAudioGuard();
         createNotificationChannel();
     }
@@ -129,6 +131,7 @@ public final class RoutingMonitorService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(applyLoop);
+        CurrentAndroidAutoProfile.disconnected();
         stopLocationWarmup("service destroyed");
         stopAssistantAudioGuard();
         clearAudioTweaksIfNeeded();
@@ -164,6 +167,7 @@ public final class RoutingMonitorService extends Service {
                 if (androidAutoSeen) {
                     androidAutoMisses++;
                     if (androidAutoMisses >= AUTO_STOP_MISSES) {
+                        CurrentAndroidAutoProfile.disconnected();
                         autoLog("android auto disconnected; misses=" + androidAutoMisses);
                         stopLocationWarmup("android auto disconnected");
                         clearAudioTweaksIfNeeded();
@@ -181,6 +185,8 @@ public final class RoutingMonitorService extends Service {
                         androidAutoSeen = false;
                         androidAutoMisses = 0;
                     }
+                } else {
+                    CurrentAndroidAutoProfile.disconnected();
                 }
                 applyAudioTweaksIfNeeded(settings, false);
                 updateNotificationPlaybackMute(settings, false);
@@ -191,10 +197,13 @@ public final class RoutingMonitorService extends Service {
             AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
             activeConnection = connection;
             settings = ProfileSettings.monitorSettings(this, connection);
+            CurrentAndroidAutoProfile.connected(settings.profileId);
             if (!androidAutoSeen) {
                 targetWasActiveThisSession = false;
                 bluetoothResetAfterDisconnect = false;
-                autoLog("android auto connected profile=" + settings.profileId + " source=" + connection.label());
+                autoLog("android auto connected profile=" + settings.profileId
+                        + " source=" + connection.label()
+                        + " key=" + connection.key());
                 startLocationWarmupIfNeeded(settings, connection);
             }
             androidAutoSeen = true;
@@ -208,6 +217,7 @@ public final class RoutingMonitorService extends Service {
             updateMediaBoost(settings, true);
             reassertPinnedMediaIfNeeded(settings, true);
         } else {
+            CurrentAndroidAutoProfile.disconnected();
             applyAudioTweaksIfNeeded(settings, false);
             updateNotificationPlaybackMute(settings, false);
             updateMediaBoost(settings, false);
@@ -475,12 +485,15 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void updateMediaBoost(ProfileSettings.MonitorSettings settings, boolean androidAutoActive) {
+        // Observe explicit Android Auto volume taps before any branch can restore an owned floor.
+        consumeManualMediaVolumeChange();
+        boolean boostMedia = shouldBoostMedia(settings, androidAutoActive);
         if (isCallOrCommunicationActive()) {
             clearMediaBoostForCallProtection();
             logCallProtection("media boost skipped", settings);
             return;
         }
-        if (!shouldBoostMedia(settings, androidAutoActive)) {
+        if (!boostMedia) {
             clearMediaBoostIfNeeded();
             mediaBoostVolumeUserControlled = false;
             return;
@@ -515,9 +528,12 @@ public final class RoutingMonitorService extends Service {
             } else {
                 effect = "effects=already_active";
             }
-            String volumeSummary = settings.mediaVolumeFloorFallback
-                    ? updateMediaBoostVolumeIfNeeded()
-                    : clearMediaBoostVolumeIfNeeded();
+            String volumeSummary;
+            if (settings.mediaVolumeFloorFallback) {
+                volumeSummary = updateMediaBoostVolumeIfNeeded();
+            } else {
+                volumeSummary = clearMediaBoostVolumeIfNeeded();
+            }
             mediaBoostActive = true;
             logMediaBoost("media boost active " + effect
                     + " " + volumeSummary
@@ -529,6 +545,10 @@ public final class RoutingMonitorService extends Service {
     }
 
     private String updateMediaBoostVolumeIfNeeded() {
+        if (consumeManualMediaVolumeChange()) {
+            return "musicVolume=" + controller.musicVolumeSummary() + " manualOverride";
+        }
+
         if (mediaBoostVolumeOwned
                 && mediaBoostRaisedVolume >= 0
                 && controller.musicStreamVolume() != mediaBoostRaisedVolume) {
@@ -556,7 +576,36 @@ public final class RoutingMonitorService extends Service {
         return adjustment.summary();
     }
 
+    private boolean consumeManualMediaVolumeChange() {
+        long currentGeneration = ManualMediaVolumeTracker.generation();
+        if (!shouldRelinquishOwnedMediaVolume(
+                manualMediaVolumeGeneration,
+                currentGeneration
+        )) {
+            return false;
+        }
+
+        manualMediaVolumeGeneration = currentGeneration;
+        mediaBoostVolumeOwned = false;
+        mediaBoostRestoreVolume = -1;
+        mediaBoostRaisedVolume = -1;
+        mediaBoostVolumeUserControlled = true;
+        return true;
+    }
+
+    static boolean shouldRelinquishOwnedMediaVolume(
+            long observedGeneration,
+            long currentGeneration
+    ) {
+        return ManualMediaVolumeTracker.changedSince(observedGeneration, currentGeneration);
+    }
+
+    private void acknowledgeManualMediaVolumeGeneration() {
+        manualMediaVolumeGeneration = ManualMediaVolumeTracker.generation();
+    }
+
     private String clearMediaBoostVolumeIfNeeded() {
+        consumeManualMediaVolumeChange();
         if (!mediaBoostVolumeOwned) {
             mediaBoostVolumeUserControlled = false;
             return "musicVolume=" + controller.musicVolumeSummary() + " volumeFallback=off";
@@ -586,6 +635,7 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void clearMediaBoostIfNeeded() {
+        consumeManualMediaVolumeChange();
         if (!mediaBoostActive) {
             return;
         }
@@ -616,6 +666,7 @@ public final class RoutingMonitorService extends Service {
     }
 
     private void clearMediaBoostForCallProtection() {
+        consumeManualMediaVolumeChange();
         boolean restoreOwned = mediaBoostVolumeOwned;
         int restoreVolume = mediaBoostRestoreVolume;
         int raisedVolume = mediaBoostRaisedVolume;
@@ -757,6 +808,7 @@ public final class RoutingMonitorService extends Service {
                 + " aa=" + value(androidAutoRunning)
                 + " profile=" + settings.profileId
                 + " source=" + (connection == null ? "unknown" : connection.label())
+                + " sourceKey=" + (connection == null ? "unknown" : connection.key())
                 + " targetConnected=" + value(targetConnected)
                 + " routeActive=" + routeActiveForTarget
                 + " currentRoute=" + controller.currentCommunicationDevice()

@@ -32,6 +32,7 @@ final class AppPrefs {
     static final String NORMALIZE_MEDIA_ALWAYS = "normalize_media_always";
     static final String MEDIA_VOLUME_FLOOR_FALLBACK = "media_volume_floor_fallback";
     static final String MEDIA_DYNAMICS_PROCESSING = "media_dynamics_processing";
+    static final String MEDIA_RELAY_ENABLED = "media_relay_enabled";
 
     private AppPrefs() {
     }

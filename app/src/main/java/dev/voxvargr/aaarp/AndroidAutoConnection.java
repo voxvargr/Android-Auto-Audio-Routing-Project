@@ -71,6 +71,20 @@ final class AndroidAutoConnection {
         return specific;
     }
 
+    /**
+     * Stable, non-BSSID identity used only as a fallback when an exact connection key has not
+     * been seen yet. Exact connection mappings always take precedence.
+     */
+    String normalizedLabelAlias() {
+        return specific ? normalizeLabel(label) : "";
+    }
+
+    static String normalizeLabel(String value) {
+        return clean(value, "")
+                .toLowerCase(Locale.US)
+                .replaceAll("[^a-z0-9]+", "");
+    }
+
     private static String firstMatch(Pattern pattern, String text) {
         if (text == null) {
             return "";

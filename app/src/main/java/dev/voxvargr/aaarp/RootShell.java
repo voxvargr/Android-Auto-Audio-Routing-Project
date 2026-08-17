@@ -1,5 +1,7 @@
 package dev.voxvargr.aaarp;
 
+import android.media.AudioManager;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -10,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class RootShell {
     private static final int MAX_OUTPUT_CHARS = 32000;
     private static final String TRUNCATED_OUTPUT = "\n[AAARP diagnostics truncated]\n";
+    private static final long MUSIC_VOLUME_ADJUST_TIMEOUT_MS = 2000L;
     private static final String[] SU_CANDIDATES = {
             "su",
             "/system/bin/su",
@@ -69,6 +72,24 @@ final class RootShell {
     boolean isAvailable() {
         ShellResult result = run("id", 3000);
         return result.success && result.output.contains("uid=0");
+    }
+
+    ShellResult adjustMusicVolume(int direction) {
+        String command = musicVolumeAdjustmentCommand(direction);
+        if (command == null) {
+            return ShellResult.failure("Invalid music-volume direction: " + direction);
+        }
+        return run(command, MUSIC_VOLUME_ADJUST_TIMEOUT_MS);
+    }
+
+    static String musicVolumeAdjustmentCommand(int direction) {
+        if (direction == AudioManager.ADJUST_LOWER) {
+            return "cmd media_session volume --stream 3 --adj lower";
+        }
+        if (direction == AudioManager.ADJUST_RAISE) {
+            return "cmd media_session volume --stream 3 --adj raise";
+        }
+        return null;
     }
 
     ShellResult diagnostics() {
