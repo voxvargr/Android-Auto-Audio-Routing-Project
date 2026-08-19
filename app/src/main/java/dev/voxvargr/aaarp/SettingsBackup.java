@@ -173,7 +173,8 @@ final class SettingsBackup {
     }
 
     private static boolean shouldBackupKey(String key) {
-        return !AppPrefs.MONITOR_ENABLED.equals(key);
+        return !AppPrefs.MONITOR_ENABLED.equals(key)
+                && !AppPrefs.isLegacyMediaRelayKey(key);
     }
 
     private static boolean safeBoolean(SharedPreferences prefs, String key, boolean fallback) {

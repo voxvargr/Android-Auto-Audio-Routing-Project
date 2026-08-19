@@ -67,10 +67,6 @@ final class ProfileSettings {
     }
 
     static void saveActiveBoolean(Context context, String key, boolean value) {
-        if (AppPrefs.MEDIA_RELAY_ENABLED.equals(key)) {
-            saveActiveMediaRelayEnabled(context, value);
-            return;
-        }
         SharedPreferences prefs = AppPrefs.get(context);
         String activeId = activeProfileId(context);
         SharedPreferences.Editor editor = prefs.edit().putBoolean(key, value);
@@ -78,65 +74,6 @@ final class ProfileSettings {
             editor.putBoolean(profileKey(activeId, key), value);
         }
         editor.apply();
-    }
-
-    static void saveActiveMediaRelayEnabled(Context context, boolean enabled) {
-        saveMediaRelayEnabledForProfile(context, activeProfileId(context), enabled);
-    }
-
-    static void saveMediaRelayEnabledForProfile(
-            Context context,
-            String profileId,
-            boolean enabled
-    ) {
-        SharedPreferences prefs = AppPrefs.get(context);
-        String safeProfileId = cleanProfileId(profileId);
-        SharedPreferences.Editor editor = prefs.edit()
-                .putBoolean(mediaRelayPreferenceKeyForProfile(safeProfileId), enabled);
-        if (safeProfileId.equals(activeProfileId(context))) {
-            editor.putBoolean(AppPrefs.MEDIA_RELAY_ENABLED, enabled);
-        }
-        editor.apply();
-    }
-
-    static boolean mediaRelayEnabledForActiveProfile(Context context) {
-        return mediaRelayEnabledForProfile(context, activeProfileId(context));
-    }
-
-    static boolean mediaRelayEnabledForProfile(Context context, String profileId) {
-        return mediaRelayEnabledForProfile(AppPrefs.get(context), profileId);
-    }
-
-    static boolean mediaRelayEnabled(Context context, AndroidAutoConnection connection) {
-        SharedPreferences prefs = AppPrefs.get(context);
-        String profileId = profileIdForConnection(prefs, connection);
-        return mediaRelayEnabledForProfile(prefs, profileId);
-    }
-
-    static String mediaRelayPreferenceKeyForProfile(String profileId) {
-        return profileKey(profileId, AppPrefs.MEDIA_RELAY_ENABLED);
-    }
-
-    static boolean isMediaRelayPreferenceKey(String key) {
-        return AppPrefs.MEDIA_RELAY_ENABLED.equals(key)
-                || (key != null
-                && key.startsWith(PROFILE_PREFIX)
-                && key.endsWith("_" + AppPrefs.MEDIA_RELAY_ENABLED));
-    }
-
-    static boolean isMediaRelayConfigurationKey(String key) {
-        return isMediaRelayPreferenceKey(key)
-                || ACTIVE_PROFILE_ID.equals(key)
-                || (key != null && (key.startsWith(CONNECTION_PROFILE_PREFIX)
-                || key.startsWith(CONNECTION_LABEL_PROFILE_PREFIX)));
-    }
-
-    static boolean relayValueForStoredPreference(boolean hasStoredValue, boolean storedValue) {
-        return hasStoredValue && storedValue;
-    }
-
-    static boolean relayValueWhenSavingProfile(boolean profileAlreadyExists, boolean currentValue) {
-        return profileAlreadyExists && currentValue;
     }
 
     static ProfileEntry saveCurrentSettingsForConnection(Context context, AndroidAutoConnection connection) {
@@ -216,7 +153,6 @@ final class ProfileSettings {
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.MEDIA_DYNAMICS_PROCESSING, false);
-        copyProfileBooleanOrDefault(prefs, editor, safeId, AppPrefs.MEDIA_RELAY_ENABLED, false);
         editor.putString(ACTIVE_PROFILE_ID, safeId);
         editor.apply();
     }
@@ -317,7 +253,6 @@ final class ProfileSettings {
 
     private static void writeCurrentSettingsToProfile(SharedPreferences prefs, SharedPreferences.Editor editor,
                                                       String profileId, String label) {
-        boolean profileAlreadyExists = profileExists(prefs, profileId);
         editor.putString(profileKey(profileId, PROFILE_LABEL), label);
         putProfileString(prefs, editor, profileId, AppPrefs.SELECTED_DEVICE_KEY);
         putProfileString(prefs, editor, profileId, AppPrefs.SELECTED_BLUETOOTH_TARGET_KEY);
@@ -339,13 +274,6 @@ final class ProfileSettings {
         putProfileBoolean(prefs, editor, profileId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.MEDIA_DYNAMICS_PROCESSING, false);
-        boolean mediaRelayEnabled = relayValueWhenSavingProfile(
-                profileAlreadyExists,
-                mediaRelayEnabledForProfile(prefs, profileId)
-        );
-        editor.putBoolean(mediaRelayPreferenceKeyForProfile(profileId), mediaRelayEnabled);
-        // The saved profile becomes active. Keep the current-settings mirror consistent with it.
-        editor.putBoolean(AppPrefs.MEDIA_RELAY_ENABLED, mediaRelayEnabled);
     }
 
     private static void putProfileString(SharedPreferences prefs, SharedPreferences.Editor editor,
@@ -386,31 +314,6 @@ final class ProfileSettings {
         if (prefs.contains(profileKey)) {
             editor.putBoolean(key, safeBoolean(prefs, profileKey, fallback));
         }
-    }
-
-    private static void copyProfileBooleanOrDefault(SharedPreferences prefs, SharedPreferences.Editor editor,
-                                                    String profileId, String key, boolean fallback) {
-        String profileKey = profileKey(profileId, key);
-        editor.putBoolean(
-                key,
-                relayValueForStoredPreference(
-                        prefs.contains(profileKey),
-                        safeBoolean(prefs, profileKey, fallback)
-                )
-        );
-    }
-
-    private static boolean profileExists(SharedPreferences prefs, String profileId) {
-        if (DEFAULT_PROFILE_ID.equals(profileId)) {
-            return true;
-        }
-        return prefs.contains(profileKey(profileId, PROFILE_LABEL))
-                || safeStringSet(prefs, PROFILE_IDS).contains(profileId);
-    }
-
-    private static boolean mediaRelayEnabledForProfile(SharedPreferences prefs, String profileId) {
-        String key = mediaRelayPreferenceKeyForProfile(profileId);
-        return relayValueForStoredPreference(prefs.contains(key), safeBoolean(prefs, key, false));
     }
 
     private static String safeString(SharedPreferences prefs, String key, String fallback) {

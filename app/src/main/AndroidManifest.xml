@@ -18,6 +18,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="dev.voxvargr.aaarp.permission.ADJUST_MEDIA_VOLUME" />
+
+    <permission
+        android:name="dev.voxvargr.aaarp.permission.ADJUST_MEDIA_VOLUME"
+        android:protectionLevel="signature" />
 
     <queries>
         <package android:name="com.google.android.projection.gearhead" />
@@ -30,14 +35,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AAARP"
-        tools:ignore="MissingIntentFilterForMediaSearch">
-        <meta-data
-            android:name="com.google.android.gms.car.application"
-            android:resource="@xml/automotive_app_desc" />
-        <meta-data
-            android:name="androidx.car.app.TintableAttributionIcon"
-            android:resource="@drawable/ic_android_auto_attribution" />
+        android:theme="@style/Theme.AAARP">
 
         <activity
             android:name=".MainActivity"
@@ -53,25 +51,23 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice|location" />
 
-        <service
-            android:name=".AndroidAutoVolumeService"
+        <provider
+            android:name=".AndroidAutoVolumeShortcutProvider"
+            android:authorities="dev.voxvargr.aaarp.volumeshortcut"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/android_auto_volume_service_label">
-            <intent-filter>
-                <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
-        </service>
+            android:grantUriPermissions="false"
+            android:permission="com.google.android.projection.gearhead.permission.START_PROJECTED_ACTIVITY"
+            tools:ignore="ExportedContentProvider" />
 
-        <service
-            android:name=".MediaRelayNotificationListenerService"
-            android:exported="false"
-            android:label="@string/media_relay_service_label"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+        <receiver
+            android:name=".AndroidAutoVolumeShortcutReceiver"
+            android:exported="true"
+            android:permission="dev.voxvargr.aaarp.permission.ADJUST_MEDIA_VOLUME">
             <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
+                <action android:name="dev.voxvargr.aaarp.action.VOLUME_DOWN" />
+                <action android:name="dev.voxvargr.aaarp.action.VOLUME_UP" />
             </intent-filter>
-        </service>
+        </receiver>
 
         <receiver
             android:name=".BootRestoreReceiver"

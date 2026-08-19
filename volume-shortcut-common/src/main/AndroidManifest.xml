@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!--
+          The Android Auto process calls this provider from the two LSPosed-created dock
+          callbacks. The provider performs an exact Binder UID/package check before it accepts
+          the single supported command; no general provider operations are exposed.
+        -->
+        <provider
+            android:name="dev.voxvargr.aaarp.shortcut.VolumeShortcutCommandProvider"
+            android:authorities="${applicationId}.volumeshortcut"
+            android:exported="true"
+            android:grantUriPermissions="false"
+            android:permission="com.google.android.projection.gearhead.permission.START_PROJECTED_ACTIVITY"
+            tools:ignore="ExportedContentProvider" />
+    </application>
+</manifest>

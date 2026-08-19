@@ -3,6 +3,8 @@ package dev.voxvargr.aaarp;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.util.Map;
+
 final class AppPrefs {
     static final String PREFS = "aaarp_prefs";
     static final String SELECTED_DEVICE_KEY = "selected_device_key";
@@ -32,12 +34,38 @@ final class AppPrefs {
     static final String NORMALIZE_MEDIA_ALWAYS = "normalize_media_always";
     static final String MEDIA_VOLUME_FLOOR_FALLBACK = "media_volume_floor_fallback";
     static final String MEDIA_DYNAMICS_PROCESSING = "media_dynamics_processing";
-    static final String MEDIA_RELAY_ENABLED = "media_relay_enabled";
+    private static final String LEGACY_MEDIA_RELAY_ENABLED = "media_relay_enabled";
+    private static final String LEGACY_PROFILE_MEDIA_RELAY_SUFFIX = "_media_relay_enabled";
 
     private AppPrefs() {
     }
 
     static SharedPreferences get(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** Removes settings left by the retired Android Auto media relay. */
+    static void removeLegacyMediaRelaySettings(Context context) {
+        SharedPreferences prefs = get(context);
+        SharedPreferences.Editor editor = null;
+        for (Map.Entry<String, ?> entry : prefs.getAll().entrySet()) {
+            if (!isLegacyMediaRelayKey(entry.getKey())) {
+                continue;
+            }
+            if (editor == null) {
+                editor = prefs.edit();
+            }
+            editor.remove(entry.getKey());
+        }
+        if (editor != null) {
+            editor.apply();
+        }
+    }
+
+    static boolean isLegacyMediaRelayKey(String key) {
+        return LEGACY_MEDIA_RELAY_ENABLED.equals(key)
+                || (key != null
+                && key.startsWith("profile_")
+                && key.endsWith(LEGACY_PROFILE_MEDIA_RELAY_SUFFIX));
     }
 }

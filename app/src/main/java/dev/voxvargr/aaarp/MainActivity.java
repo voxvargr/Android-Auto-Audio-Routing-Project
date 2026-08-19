@@ -2,8 +2,6 @@ package dev.voxvargr.aaarp;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.NotificationManager;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
@@ -12,7 +10,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -66,7 +63,6 @@ public final class MainActivity extends Activity {
     private final List<BluetoothTarget> bluetoothTargets = new ArrayList<>();
     private AndroidAutoConnection lastDetectedConnection = AndroidAutoConnection.fallback();
     private boolean suppressProfileSelectionLoad;
-    private boolean suppressMediaRelayChange;
     private TextView statusView;
     private TextView currentRouteView;
     private TextView bluetoothInventoryView;
@@ -89,12 +85,11 @@ public final class MainActivity extends Activity {
     private CheckBox normalizeMediaAlwaysCheckBox;
     private CheckBox mediaVolumeFloorFallbackCheckBox;
     private CheckBox mediaDynamicsProcessingCheckBox;
-    private CheckBox mediaRelayEnabledCheckBox;
-    private TextView mediaRelayAccessStatusView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        AppPrefs.removeLegacyMediaRelaySettings(this);
         controller = new AudioRouteController(this);
         setContentView(buildContentView());
         try {
@@ -104,12 +99,6 @@ public final class MainActivity extends Activity {
             updateStatus("Startup recovered.");
             setLog("Startup issue avoided: " + e.getMessage());
         }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        restoreMediaRelaySetting();
     }
 
     @Override
@@ -207,56 +196,6 @@ public final class MainActivity extends Activity {
         profileRow.addView(button("Save Profile", v -> saveProfileForCurrentConnection()), weightParams());
         content.addView(profileRow, blockParams());
 
-        TextView mediaRelayLabel = text(getString(R.string.media_relay_service_label), 15, true);
-        mediaRelayLabel.setTextColor(getColor(R.color.aaarp_text));
-        content.addView(mediaRelayLabel, blockParams());
-
-        mediaRelayEnabledCheckBox = new CheckBox(this);
-        mediaRelayEnabledCheckBox.setText(R.string.media_relay_checkbox);
-        mediaRelayEnabledCheckBox.setTextColor(getColor(R.color.aaarp_text));
-        mediaRelayEnabledCheckBox.setChecked(ProfileSettings.mediaRelayEnabledForActiveProfile(this));
-        mediaRelayEnabledCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (suppressMediaRelayChange) {
-                return;
-            }
-            ProfileSettings.saveMediaRelayEnabledForProfile(
-                    this,
-                    selectedMediaRelayProfileId(),
-                    isChecked
-            );
-            refreshMediaRelayAccessStatus();
-            if (!isChecked) {
-                setLog(getString(R.string.media_relay_disabled));
-                return;
-            }
-            if (hasMediaRelayNotificationAccess()) {
-                setLog(getString(R.string.media_relay_enabled_ready));
-                return;
-            }
-            setLog(getString(R.string.media_relay_access_guidance));
-            openNotificationListenerSettings();
-        });
-        content.addView(mediaRelayEnabledCheckBox, blockParams());
-
-        TextView mediaRelayExplanation = text(getString(R.string.media_relay_explanation), 14, false);
-        mediaRelayExplanation.setTextColor(getColor(R.color.aaarp_muted));
-        content.addView(mediaRelayExplanation, blockParams());
-
-        mediaRelayAccessStatusView = panelText();
-        content.addView(mediaRelayAccessStatusView, blockParams());
-
-        Button notificationAccessButton = button(
-                getString(R.string.media_relay_access_button),
-                v -> {
-                    if (!hasMediaRelayNotificationAccess()) {
-                        setLog(getString(R.string.media_relay_access_guidance));
-                    }
-                    openNotificationListenerSettings();
-                }
-        );
-        content.addView(notificationAccessButton, blockParams());
-        refreshMediaRelayAccessStatus();
-
         deviceSpinner = new Spinner(this);
         deviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new ArrayList<>());
         deviceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -296,7 +235,7 @@ public final class MainActivity extends Activity {
         content.addView(rowTwo, blockParams());
 
         rootCheckBox = new CheckBox(this);
-        rootCheckBox.setText("Use root for diagnostics and AA volume");
+        rootCheckBox.setText("Use root for diagnostics and volume shortcuts");
         rootCheckBox.setTextColor(getColor(R.color.aaarp_text));
         rootCheckBox.setChecked(prefBoolean(AppPrefs.USE_ROOT, false));
         rootCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
@@ -653,7 +592,6 @@ public final class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         lastDetectedConnection = AndroidAutoConnection.fallback();
                         selectProfile(selectedProfileId);
-                        restoreMediaRelaySetting();
                         updateStatus("Android Auto is not running.");
                         setLog("No active Android Auto connection detected."
                                 + visibleWifi
@@ -689,7 +627,6 @@ public final class MainActivity extends Activity {
             } catch (RuntimeException e) {
                 runOnUiThread(() -> {
                     selectProfile(selectedProfileId);
-                    restoreMediaRelaySetting();
                     lastDetectedConnection = AndroidAutoConnection.fallback();
                     updateStatus("Android Auto detection failed.");
                     setLog("Could not detect Android Auto profile: " + e.getMessage()
@@ -802,11 +739,6 @@ public final class MainActivity extends Activity {
                 .append(settings.pauseBluetoothScoDuringMedia ? "on" : "off").append('\n');
         report.append("Keep media on Bluetooth during Android Auto: ")
                 .append(settings.pinMediaToBluetoothDuringAndroidAuto ? "on" : "off").append('\n');
-        report.append("Mirror current phone media in Android Auto: ")
-                .append(ProfileSettings.mediaRelayEnabledForProfile(this, settings.profileId)
-                        ? "on" : "off").append('\n');
-        report.append("Notification Access for media relay: ")
-                .append(hasMediaRelayNotificationAccess() ? "granted" : "not granted").append('\n');
         report.append("Boost quiet media during Android Auto: ")
                 .append(settings.normalizeMediaDuringAndroidAuto ? "on" : "off").append('\n');
         report.append("Boost quiet media outside Android Auto: ")
@@ -1068,7 +1000,6 @@ public final class MainActivity extends Activity {
         suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
         muteNotificationsDuringPlaybackCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false));
         muteNotificationsDuringPlaybackAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false));
-        restoreMediaRelaySetting();
         updateDependentSoundTweakControls();
         preferredTargetEditText.setText(prefString(
                 AppPrefs.CUSTOM_BLUETOOTH_QUERY,
@@ -1317,89 +1248,6 @@ public final class MainActivity extends Activity {
             startActivity(intent);
         } catch (RuntimeException e) {
             startActivity(new Intent(Settings.ACTION_SETTINGS));
-        }
-    }
-
-    private void restoreMediaRelaySetting() {
-        if (mediaRelayEnabledCheckBox != null) {
-            suppressMediaRelayChange = true;
-            try {
-                mediaRelayEnabledCheckBox.setChecked(
-                        ProfileSettings.mediaRelayEnabledForProfile(
-                                this,
-                                selectedMediaRelayProfileId()
-                        )
-                );
-            } finally {
-                suppressMediaRelayChange = false;
-            }
-        }
-        refreshMediaRelayAccessStatus();
-    }
-
-    private String selectedMediaRelayProfileId() {
-        ProfileSettings.ProfileEntry entry = selectedProfileEntry();
-        return entry == null ? ProfileSettings.activeProfileId(this) : entry.id;
-    }
-
-    private void refreshMediaRelayAccessStatus() {
-        if (mediaRelayAccessStatusView == null) {
-            return;
-        }
-        mediaRelayAccessStatusView.setText(getString(hasMediaRelayNotificationAccess()
-                ? R.string.media_relay_access_granted
-                : R.string.media_relay_access_missing));
-    }
-
-    private boolean hasMediaRelayNotificationAccess() {
-        ComponentName listener = mediaRelayListenerComponent();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            try {
-                NotificationManager manager = getSystemService(NotificationManager.class);
-                return manager != null && manager.isNotificationListenerAccessGranted(listener);
-            } catch (RuntimeException ignored) {
-                // Fall through to the readable secure-setting compatibility check.
-            }
-        }
-
-        try {
-            String enabledListeners = Settings.Secure.getString(
-                    getContentResolver(),
-                    "enabled_notification_listeners"
-            );
-            if (enabledListeners == null || enabledListeners.length() == 0) {
-                return false;
-            }
-            TextUtils.SimpleStringSplitter splitter = new TextUtils.SimpleStringSplitter(':');
-            splitter.setString(enabledListeners);
-            for (String flattenedComponent : splitter) {
-                ComponentName enabled = ComponentName.unflattenFromString(flattenedComponent);
-                if (listener.equals(enabled)) {
-                    return true;
-                }
-            }
-        } catch (RuntimeException ignored) {
-            return false;
-        }
-        return false;
-    }
-
-    private ComponentName mediaRelayListenerComponent() {
-        return new ComponentName(
-                getPackageName(),
-                getPackageName() + ".MediaRelayNotificationListenerService"
-        );
-    }
-
-    private void openNotificationListenerSettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
-        } catch (RuntimeException firstFailure) {
-            try {
-                startActivity(new Intent(Settings.ACTION_SETTINGS));
-            } catch (RuntimeException secondFailure) {
-                setLog(getString(R.string.media_relay_settings_unavailable));
-            }
         }
     }
 

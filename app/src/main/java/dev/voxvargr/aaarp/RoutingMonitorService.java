@@ -131,7 +131,6 @@ public final class RoutingMonitorService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(applyLoop);
-        CurrentAndroidAutoProfile.disconnected();
         stopLocationWarmup("service destroyed");
         stopAssistantAudioGuard();
         clearAudioTweaksIfNeeded();
@@ -167,7 +166,6 @@ public final class RoutingMonitorService extends Service {
                 if (androidAutoSeen) {
                     androidAutoMisses++;
                     if (androidAutoMisses >= AUTO_STOP_MISSES) {
-                        CurrentAndroidAutoProfile.disconnected();
                         autoLog("android auto disconnected; misses=" + androidAutoMisses);
                         stopLocationWarmup("android auto disconnected");
                         clearAudioTweaksIfNeeded();
@@ -185,8 +183,6 @@ public final class RoutingMonitorService extends Service {
                         androidAutoSeen = false;
                         androidAutoMisses = 0;
                     }
-                } else {
-                    CurrentAndroidAutoProfile.disconnected();
                 }
                 applyAudioTweaksIfNeeded(settings, false);
                 updateNotificationPlaybackMute(settings, false);
@@ -197,7 +193,6 @@ public final class RoutingMonitorService extends Service {
             AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
             activeConnection = connection;
             settings = ProfileSettings.monitorSettings(this, connection);
-            CurrentAndroidAutoProfile.connected(settings.profileId);
             if (!androidAutoSeen) {
                 targetWasActiveThisSession = false;
                 bluetoothResetAfterDisconnect = false;
@@ -217,7 +212,6 @@ public final class RoutingMonitorService extends Service {
             updateMediaBoost(settings, true);
             reassertPinnedMediaIfNeeded(settings, true);
         } else {
-            CurrentAndroidAutoProfile.disconnected();
             applyAudioTweaksIfNeeded(settings, false);
             updateNotificationPlaybackMute(settings, false);
             updateMediaBoost(settings, false);

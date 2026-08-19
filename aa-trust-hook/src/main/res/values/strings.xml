@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">AAARP Android Auto Trust Hook</string>
+    <string name="module_description">Fixes AAARP Volume+ and Volume- into Android Auto dock positions three and four, with direct taps that keep the current screen open.</string>
+</resources>
