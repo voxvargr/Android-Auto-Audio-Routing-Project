@@ -95,6 +95,7 @@ public final class RoutingMonitorService extends Service {
     public void onCreate() {
         super.onCreate();
         handler = new Handler(Looper.getMainLooper());
+        AppPrefs.migrateLegacyDynamicsProcessingSettings(this);
         controller = new AudioRouteController(this);
         locationWarmup = new LocationWarmup(this, handler, this::autoLog);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -514,10 +515,10 @@ public final class RoutingMonitorService extends Service {
 
         try {
             lastMediaPlaybackActiveAt = System.currentTimeMillis();
-            String boostKey = settings.profileId + "|" + settings.mediaDynamicsProcessing;
+            String boostKey = settings.profileId + "|" + settings.mediaLevelerMode;
             String effect;
             if (!mediaBoostActive || !boostKey.equals(activeMediaBoostKey)) {
-                effect = controller.enableMediaBoost(settings.mediaDynamicsProcessing);
+                effect = controller.enableMediaBoost(settings.mediaLevelerMode);
                 activeMediaBoostKey = boostKey;
             } else {
                 effect = "effects=already_active";
@@ -813,7 +814,7 @@ public final class RoutingMonitorService extends Service {
                 + " normalizeMedia=" + settings.normalizeMediaDuringAndroidAuto
                 + " normalizeAlways=" + settings.normalizeMediaAlways
                 + " volumeFallback=" + settings.mediaVolumeFloorFallback
-                + " dynamics=" + settings.mediaDynamicsProcessing
+                + " leveler=" + settings.mediaLevelerMode
                 + " notificationRoute=" + settings.notificationRouteMode
                 + " suppressDucking=" + settings.suppressNotificationDucking
                 + " suppressDuckingAlways=" + settings.suppressNotificationDuckingAlways

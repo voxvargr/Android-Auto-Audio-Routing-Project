@@ -12,6 +12,40 @@ Profiles: use "Detect AA" while connected to a wireless Android Auto unit, tune 
 
 GPS warm-up: the optional "Warm up GPS when Android Auto starts" profile setting briefly asks Android's GPS provider for a fresh fix when Android Auto is first detected, then stops listening. This cannot force Google Maps to accept a location, but it can wake the phone's satellite location path before Maps times out. For phone-in-pocket startup, grant Precise Location and set Location to "Allow all the time" in Android's app permission screen.
 
+## Loudness leveling (making every song the same volume)
+
+"Boost quiet media during Android Auto" no longer applies one flat gain. It now runs a
+slow-release leveler: a full-band compressor pins loud tracks against a limiter ceiling
+while makeup gain lifts quiet tracks toward that same ceiling. Nothing is turned down
+below where it started, and the phone's `STREAM_MUSIC` level is never changed by the
+leveler itself, so the volume shortcuts and the manual-override logic still behave.
+
+The **Loudness leveling strength** setting replaces the old "Experimental stronger
+compressor/limiter" checkbox:
+
+| Mode | What it does |
+| --- | --- |
+| Off | No effects at all. |
+| Gain only | The previous behavior: a flat +12 dB LoudnessEnhancer boost, no dynamics stage. |
+| Gentle | −38 dB threshold, 3:1, 400 ms release, +5 dB makeup. Light touch. |
+| Strong (default) | −42 dB threshold, 5:1, 650 ms release, +8 dB makeup, −0.7 dBFS ceiling. |
+| Max | −48 dB threshold, 8:1, 900 ms release, +11 dB makeup, −0.5 dBFS ceiling. Most aggressive. |
+
+The two settings that decide whether leveling actually happens are the threshold and the
+release time. The previous tuning used a −32 dB threshold, which quiet tracks never
+crossed, so they were never processed; and a 120 ms release, which pumps on individual
+drum hits instead of riding the song's overall level. Every leveling mode now sits below
+−32 dB with a release of 400 ms or longer.
+
+Start on **Strong**. If loud tracks sound squashed or breathe audibly, drop to Gentle. If
+quiet tracks still fall behind, go to Max. Because this is a real compressor it also
+evens out quiet passages *within* a song, which no per-track normalizer can do. Existing
+installs migrate automatically: the old checkbox on becomes Strong, off becomes Gain only.
+
+Note that this stacks with your player's own normalization. If YouTube Music's "stable
+volume" or Spotify's "Normalize volume" is enabled, leave it on and let the leveler clean
+up what it misses.
+
 Android Auto sound tweaks are experimental root options. Notification routing tries to move Android's sonification strategy to speaker, earpiece, or the saved Bluetooth target while Android Auto is active, then clears it afterward. The ducking option temporarily blocks SystemUI audio focus while Android Auto is active, and can optionally stay active outside Android Auto while the monitor is running. Notification sounds can also be muted during media playback, with an optional always-on mode for non-Android Auto listening.
 
 ## Android Auto volume controls

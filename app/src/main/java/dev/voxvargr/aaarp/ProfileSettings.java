@@ -152,7 +152,7 @@ final class ProfileSettings {
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false);
-        copyProfileBoolean(prefs, editor, safeId, AppPrefs.MEDIA_DYNAMICS_PROCESSING, false);
+        copyProfileString(prefs, editor, safeId, AppPrefs.MEDIA_LEVELER_MODE);
         editor.putString(ACTIVE_PROFILE_ID, safeId);
         editor.apply();
     }
@@ -178,7 +178,7 @@ final class ProfileSettings {
                 getBoolean(prefs, profileId, AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false),
                 getBoolean(prefs, profileId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false),
                 getBoolean(prefs, profileId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false),
-                getBoolean(prefs, profileId, AppPrefs.MEDIA_DYNAMICS_PROCESSING, false),
+                getString(prefs, profileId, AppPrefs.MEDIA_LEVELER_MODE, MediaLevelerProfile.DEFAULT_MODE),
                 profileId
         );
     }
@@ -273,7 +273,7 @@ final class ProfileSettings {
         putProfileBoolean(prefs, editor, profileId, AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false);
-        putProfileBoolean(prefs, editor, profileId, AppPrefs.MEDIA_DYNAMICS_PROCESSING, false);
+        putProfileString(prefs, editor, profileId, AppPrefs.MEDIA_LEVELER_MODE);
     }
 
     private static void putProfileString(SharedPreferences prefs, SharedPreferences.Editor editor,
@@ -384,7 +384,7 @@ final class ProfileSettings {
         final boolean normalizeMediaDuringAndroidAuto;
         final boolean normalizeMediaAlways;
         final boolean mediaVolumeFloorFallback;
-        final boolean mediaDynamicsProcessing;
+        final String mediaLevelerMode;
         final String profileId;
 
         MonitorSettings(String selectedDeviceKey, String preferredBluetoothTarget, boolean watchdogMode,
@@ -397,7 +397,7 @@ final class ProfileSettings {
                         boolean muteNotificationsDuringPlayback,
                         boolean muteNotificationsDuringPlaybackAlways,
                         boolean normalizeMediaDuringAndroidAuto, boolean normalizeMediaAlways,
-                        boolean mediaVolumeFloorFallback, boolean mediaDynamicsProcessing,
+                        boolean mediaVolumeFloorFallback, String mediaLevelerMode,
                         String profileId) {
             this.selectedDeviceKey = selectedDeviceKey;
             this.preferredBluetoothTarget = preferredBluetoothTarget;
@@ -418,7 +418,7 @@ final class ProfileSettings {
             this.normalizeMediaDuringAndroidAuto = normalizeMediaDuringAndroidAuto;
             this.normalizeMediaAlways = normalizeMediaAlways;
             this.mediaVolumeFloorFallback = mediaVolumeFloorFallback;
-            this.mediaDynamicsProcessing = mediaDynamicsProcessing;
+            this.mediaLevelerMode = MediaLevelerProfile.normalizeMode(mediaLevelerMode);
             this.profileId = profileId;
         }
     }

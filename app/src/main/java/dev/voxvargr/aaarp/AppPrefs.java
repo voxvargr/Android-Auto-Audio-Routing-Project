@@ -34,6 +34,7 @@ final class AppPrefs {
     static final String NORMALIZE_MEDIA_ALWAYS = "normalize_media_always";
     static final String MEDIA_VOLUME_FLOOR_FALLBACK = "media_volume_floor_fallback";
     static final String MEDIA_DYNAMICS_PROCESSING = "media_dynamics_processing";
+    static final String MEDIA_LEVELER_MODE = "media_leveler_mode";
     private static final String LEGACY_MEDIA_RELAY_ENABLED = "media_relay_enabled";
     private static final String LEGACY_PROFILE_MEDIA_RELAY_SUFFIX = "_media_relay_enabled";
 
@@ -42,6 +43,64 @@ final class AppPrefs {
 
     static SharedPreferences get(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * Converts the retired "experimental stronger compressor" checkbox into the newer
+     * leveler mode preference, for the default settings and every saved profile.
+     */
+    static void migrateLegacyDynamicsProcessingSettings(Context context) {
+        SharedPreferences prefs = get(context);
+        Map<String, ?> all = prefs.getAll();
+        SharedPreferences.Editor editor = null;
+        for (Map.Entry<String, ?> entry : all.entrySet()) {
+            String key = entry.getKey();
+            if (!isLegacyDynamicsProcessingKey(key)) {
+                continue;
+            }
+            String modeKey = legacyDynamicsProcessingModeKey(key);
+            if (modeKey == null) {
+                continue;
+            }
+            if (editor == null) {
+                editor = prefs.edit();
+            }
+            if (!all.containsKey(modeKey)) {
+                boolean legacyEnabled = Boolean.TRUE.equals(entry.getValue());
+                editor.putString(modeKey, MediaLevelerProfile.migratedModeFromLegacyFlag(legacyEnabled));
+            }
+            editor.remove(key);
+        }
+        if (editor != null) {
+            editor.apply();
+        }
+    }
+
+    static boolean isLegacyDynamicsProcessingKey(String key) {
+        return MEDIA_DYNAMICS_PROCESSING.equals(key)
+                || (key != null
+                && key.startsWith("profile_")
+                && key.endsWith("_" + MEDIA_DYNAMICS_PROCESSING));
+    }
+
+    /** Returns the leveler-mode preference key matching a legacy dynamics-processing key. */
+    static String legacyDynamicsProcessingModeKey(String legacyKey) {
+        if (MEDIA_DYNAMICS_PROCESSING.equals(legacyKey)) {
+            return MEDIA_LEVELER_MODE;
+        }
+        if (legacyKey == null
+                || !legacyKey.startsWith("profile_")
+                || !legacyKey.endsWith("_" + MEDIA_DYNAMICS_PROCESSING)) {
+            return null;
+        }
+        String profilePart = legacyKey.substring(
+                "profile_".length(),
+                legacyKey.length() - ("_" + MEDIA_DYNAMICS_PROCESSING).length()
+        );
+        if (profilePart.length() == 0) {
+            return null;
+        }
+        return "profile_" + profilePart + "_" + MEDIA_LEVELER_MODE;
     }
 
     /** Removes settings left by the retired Android Auto media relay. */
