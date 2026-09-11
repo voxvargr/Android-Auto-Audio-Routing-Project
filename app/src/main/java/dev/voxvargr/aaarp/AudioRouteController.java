@@ -267,14 +267,33 @@ final class AudioRouteController {
         }
 
         StringBuilder summary = new StringBuilder();
-        if (profile.loudnessGainMb > 0) {
+
+        // The dynamics stage runs first: its makeup gain provides most of the lift, and
+        // whether it came up decides how much flat LoudnessEnhancer gain is safe to add.
+        boolean dynamicsActive = false;
+        String dynamicsSummary;
+        if (profile.dynamicsEnabled) {
+            dynamicsSummary = enableDynamicsBoost(profile);
+            dynamicsActive = dynamicsBoost != null;
+        } else {
+            dynamicsSummary = disableDynamicsBoost();
+        }
+
+        int targetGainMb = profile.dynamicsEnabled && !dynamicsActive
+                ? profile.fallbackLoudnessGainMb
+                : profile.loudnessGainMb;
+
+        if (targetGainMb > 0) {
             try {
                 if (mediaBoost == null) {
                     mediaBoost = new LoudnessEnhancer(GLOBAL_AUDIO_SESSION);
                 }
-                mediaBoost.setTargetGain(profile.loudnessGainMb);
+                mediaBoost.setTargetGain(targetGainMb);
                 mediaBoost.setEnabled(true);
                 summary.append("loudness=on gainMb=").append((int) mediaBoost.getTargetGain());
+                if (profile.dynamicsEnabled && !dynamicsActive) {
+                    summary.append(" (fallback)");
+                }
             } catch (RuntimeException e) {
                 releaseMediaBoostQuietly();
                 summary.append("loudness=failed ").append(shortMessage(e));
@@ -283,12 +302,8 @@ final class AudioRouteController {
             releaseMediaBoostQuietly();
             summary.append("loudness=off");
         }
-        summary.append(" ");
-        if (profile.dynamicsEnabled) {
-            summary.append(enableDynamicsBoost(profile));
-        } else {
-            summary.append(disableDynamicsBoost());
-        }
+
+        summary.append(" ").append(dynamicsSummary);
         summary.append(" ").append(profile.summary());
         return summary.toString();
     }

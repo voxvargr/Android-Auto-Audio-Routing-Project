@@ -15,36 +15,52 @@ GPS warm-up: the optional "Warm up GPS when Android Auto starts" profile setting
 ## Loudness leveling (making every song the same volume)
 
 "Boost quiet media during Android Auto" no longer applies one flat gain. It now runs a
-slow-release leveler: a full-band compressor pins loud tracks against a limiter ceiling
-while makeup gain lifts quiet tracks toward that same ceiling. Nothing is turned down
-below where it started, and the phone's `STREAM_MUSIC` level is never changed by the
-leveler itself, so the volume shortcuts and the manual-override logic still behave.
+slow-release leveler that **only ever adds gain — nothing is turned down.**
 
-The **Loudness leveling strength** setting replaces the old "Experimental stronger
-compressor/limiter" checkbox:
+The gain curve is anchored at its loudest point. Makeup gain is derived as
+`(loudest_rms - threshold) * (1 - 1/ratio)`, which places the loudest material a hair
+above unity; because a compressor's net gain only falls as level rises, every quieter
+input therefore gets strictly positive gain, and the quietest gets the most. The phone's
+`STREAM_MUSIC` level is never changed by the leveler, so the volume shortcuts and the
+manual-override logic still behave.
 
-| Mode | What it does |
-| --- | --- |
-| Off | No effects at all. |
-| Gain only | The previous behavior: a flat +12 dB LoudnessEnhancer boost, no dynamics stage. |
-| Gentle | −38 dB threshold, 3:1, 400 ms release, +5 dB makeup. Light touch. |
-| Strong (default) | −42 dB threshold, 5:1, 650 ms release, +8 dB makeup, −0.7 dBFS ceiling. |
-| Max | −48 dB threshold, 8:1, 900 ms release, +11 dB makeup, −0.5 dBFS ceiling. Most aggressive. |
+Net gain by input level (dB added), and how much of a 17 dB loud/quiet gap each mode closes:
 
-The two settings that decide whether leveling actually happens are the threshold and the
-release time. The previous tuning used a −32 dB threshold, which quiet tracks never
-crossed, so they were never processed; and a 120 ms release, which pumps on individual
-drum hits instead of riding the song's overall level. Every leveling mode now sits below
-−32 dB with a release of 400 ms or longer.
+| Mode | −40 | −30 | −22 | −14 | −9 | −5 dBFS | Gap closed |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Gain only | +12.0 | +12.0 | +12.0 | +12.0 | +12.0 | +12.0 | 0.0 dB |
+| Gentle | +8.8 | +8.8 | +8.8 | +6.4 | +3.4 | +1.0 | 7.8 dB |
+| **Strong** (default) | +15.8 | +15.8 | +14.2 | +8.2 | +4.5 | +1.5 | 12.8 dB |
+| Max | +21.2 | +21.2 | +16.2 | +9.5 | +5.3 | +2.0 | 14.2 dB |
+
+"Gain only" is the previous behavior and shows why it never worked: it lifts every track
+by the same +12 dB, so the loud/quiet gap survives untouched. The leveling modes add far
+more gain to quiet material than to loud material, which is what actually pulls tracks
+together.
+
+| Mode | Threshold | Ratio | Release | Makeup | Ceiling |
+| --- | --- | --- | --- | --- | --- |
+| Gentle | −18 dB | 2.5:1 | 400 ms | +7.8 dB | −1.0 dBFS |
+| Strong | −24 dB | 4:1 | 650 ms | +14.2 dB | −0.7 dBFS |
+| Max | −28 dB | 6:1 | 900 ms | +19.2 dB | −0.5 dBFS |
+
+Note the topology: quiet tracks sit *below* the threshold, so they pass the compressor
+untouched and collect the full makeup gain, while loud tracks are pushed down toward
+them. Putting the threshold beneath the quiet material instead would compress everything
+equally and level nothing — that, plus a 120 ms release that pumped on individual drum
+hits, is what the previous tuning got wrong.
 
 Start on **Strong**. If loud tracks sound squashed or breathe audibly, drop to Gentle. If
 quiet tracks still fall behind, go to Max. Because this is a real compressor it also
 evens out quiet passages *within* a song, which no per-track normalizer can do. Existing
 installs migrate automatically: the old checkbox on becomes Strong, off becomes Gain only.
 
-Note that this stacks with your player's own normalization. If YouTube Music's "stable
-volume" or Spotify's "Normalize volume" is enabled, leave it on and let the leveler clean
-up what it misses.
+If `DynamicsProcessing` is unavailable (pre-API 28) or fails to initialise, there is no
+makeup gain, so each mode falls back to a larger flat `LoudnessEnhancer` boost and the
+log line is marked `(fallback)`. That restores loudness but cannot level.
+
+This stacks with your player's own normalization. Leave YouTube Music's "stable volume"
+or Spotify's "Normalize volume" on and let the leveler clean up what they miss.
 
 Android Auto sound tweaks are experimental root options. Notification routing tries to move Android's sonification strategy to speaker, earpiece, or the saved Bluetooth target while Android Auto is active, then clears it afterward. The ducking option temporarily blocks SystemUI audio focus while Android Auto is active, and can optionally stay active outside Android Auto while the monitor is running. Notification sounds can also be muted during media playback, with an optional always-on mode for non-Android Auto listening.
 
