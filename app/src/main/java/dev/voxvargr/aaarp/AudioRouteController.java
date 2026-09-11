@@ -14,20 +14,13 @@ import java.util.List;
 
 final class AudioRouteController {
     private static final int GLOBAL_AUDIO_SESSION = 0;
-    private static final int MEDIA_BOOST_GAIN_MB = 1200;
-    private static final float DYNAMICS_INPUT_GAIN_DB = 4.0f;
-    private static final float DYNAMICS_MBC_PRE_GAIN_DB = 6.0f;
-    private static final float DYNAMICS_MBC_POST_GAIN_DB = 1.5f;
-    private static final float DYNAMICS_MBC_THRESHOLD_DB = -32.0f;
-    private static final float DYNAMICS_MBC_RATIO = 2.8f;
-    private static final float DYNAMICS_LIMITER_THRESHOLD_DB = -1.0f;
-    private static final float DYNAMICS_LIMITER_RATIO = 10.0f;
 
     private final Context context;
     private final AudioManager audioManager;
     private final RootShell rootShell;
     private LoudnessEnhancer mediaBoost;
     private DynamicsProcessing dynamicsBoost;
+    private MediaLevelerProfile activeLevelerProfile;
     private String ownedCommunicationRouteKey;
 
     AudioRouteController(Context context) {
@@ -265,26 +258,44 @@ final class AudioRouteController {
         return audioManager.isMusicActive();
     }
 
-    String enableMediaBoost(boolean enableDynamicsProcessing) {
+    String enableMediaBoost(String levelerMode) {
+        MediaLevelerProfile profile = MediaLevelerProfile.forMode(levelerMode);
+        activeLevelerProfile = profile;
+
+        if (!profile.anyProcessingEnabled()) {
+            return disableMediaBoost();
+        }
+
         StringBuilder summary = new StringBuilder();
-        try {
-            if (mediaBoost == null) {
-                mediaBoost = new LoudnessEnhancer(GLOBAL_AUDIO_SESSION);
+        if (profile.loudnessGainMb > 0) {
+            try {
+                if (mediaBoost == null) {
+                    mediaBoost = new LoudnessEnhancer(GLOBAL_AUDIO_SESSION);
+                }
+                mediaBoost.setTargetGain(profile.loudnessGainMb);
+                mediaBoost.setEnabled(true);
+                summary.append("loudness=on gainMb=").append((int) mediaBoost.getTargetGain());
+            } catch (RuntimeException e) {
+                releaseMediaBoostQuietly();
+                summary.append("loudness=failed ").append(shortMessage(e));
             }
-            mediaBoost.setTargetGain(MEDIA_BOOST_GAIN_MB);
-            mediaBoost.setEnabled(true);
-            summary.append("loudness=on gainMb=").append((int) mediaBoost.getTargetGain());
-        } catch (RuntimeException e) {
+        } else {
             releaseMediaBoostQuietly();
-            summary.append("loudness=failed ").append(shortMessage(e));
+            summary.append("loudness=off");
         }
         summary.append(" ");
-        if (enableDynamicsProcessing) {
-            summary.append(enableDynamicsBoost());
+        if (profile.dynamicsEnabled) {
+            summary.append(enableDynamicsBoost(profile));
         } else {
             summary.append(disableDynamicsBoost());
         }
+        summary.append(" ").append(profile.summary());
         return summary.toString();
+    }
+
+    /** Describes the leveler tuning currently applied, for diagnostics output. */
+    String activeLevelerSummary() {
+        return activeLevelerProfile == null ? "leveler=off" : activeLevelerProfile.summary();
     }
 
     String disableMediaBoost() {
@@ -303,10 +314,11 @@ final class AudioRouteController {
             }
         }
         summary.append(" ").append(disableDynamicsBoost());
+        activeLevelerProfile = null;
         return summary.toString();
     }
 
-    private String enableDynamicsBoost() {
+    private String enableDynamicsBoost(MediaLevelerProfile profile) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return "dynamics=unavailable";
         }
@@ -323,13 +335,13 @@ final class AudioRouteController {
                         0,
                         true
                 )
-                        .setInputGainAllChannelsTo(DYNAMICS_INPUT_GAIN_DB)
+                        .setInputGainAllChannelsTo(profile.inputGainDb)
                         .build();
                 dynamicsBoost = new DynamicsProcessing(0, GLOBAL_AUDIO_SESSION, config);
             }
-            applyDynamicsSettings();
+            applyDynamicsSettings(profile);
             dynamicsBoost.setEnabled(true);
-            return "dynamics=on inputGainDb=" + DYNAMICS_INPUT_GAIN_DB;
+            return "dynamics=on inputGainDb=" + profile.inputGainDb;
         } catch (RuntimeException e) {
             releaseDynamicsBoostQuietly();
             return "dynamics=failed " + shortMessage(e);
@@ -693,29 +705,34 @@ final class AudioRouteController {
         }
     }
 
-    private void applyDynamicsSettings() {
+    private void applyDynamicsSettings(MediaLevelerProfile profile) {
         if (dynamicsBoost == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return;
         }
-        dynamicsBoost.setInputGainAllChannelsTo(DYNAMICS_INPUT_GAIN_DB);
+        dynamicsBoost.setInputGainAllChannelsTo(profile.inputGainDb);
 
+        // Slow release makes this ride the song's overall level instead of pumping on
+        // individual drum hits; the low threshold is what lets quiet tracks be caught at
+        // all, and post gain is the makeup that lifts them toward the limiter ceiling.
         DynamicsProcessing.MbcBand band = dynamicsBoost.getMbcBandByChannelIndex(0, 0);
-        band.setPreGain(DYNAMICS_MBC_PRE_GAIN_DB);
-        band.setPostGain(DYNAMICS_MBC_POST_GAIN_DB);
-        band.setThreshold(DYNAMICS_MBC_THRESHOLD_DB);
-        band.setRatio(DYNAMICS_MBC_RATIO);
-        band.setAttackTime(8.0f);
-        band.setReleaseTime(120.0f);
-        band.setNoiseGateThreshold(-80.0f);
+        band.setPreGain(profile.mbcPreGainDb);
+        band.setPostGain(profile.mbcPostGainDb);
+        band.setThreshold(profile.mbcThresholdDb);
+        band.setRatio(profile.mbcRatio);
+        band.setAttackTime(profile.mbcAttackMs);
+        band.setReleaseTime(profile.mbcReleaseMs);
+        band.setNoiseGateThreshold(profile.mbcNoiseGateThresholdDb);
         band.setExpanderRatio(1.0f);
+        band.setEnabled(true);
         dynamicsBoost.setMbcBandAllChannelsTo(0, band);
 
         DynamicsProcessing.Limiter limiter = dynamicsBoost.getLimiterByChannelIndex(0);
-        limiter.setThreshold(DYNAMICS_LIMITER_THRESHOLD_DB);
-        limiter.setRatio(DYNAMICS_LIMITER_RATIO);
-        limiter.setAttackTime(1.0f);
-        limiter.setReleaseTime(60.0f);
+        limiter.setThreshold(profile.limiterThresholdDb);
+        limiter.setRatio(profile.limiterRatio);
+        limiter.setAttackTime(profile.limiterAttackMs);
+        limiter.setReleaseTime(profile.limiterReleaseMs);
         limiter.setPostGain(0.0f);
+        limiter.setEnabled(true);
         dynamicsBoost.setLimiterAllChannelsTo(limiter);
     }
 

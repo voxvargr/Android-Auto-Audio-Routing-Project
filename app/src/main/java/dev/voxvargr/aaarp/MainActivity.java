@@ -63,6 +63,7 @@ public final class MainActivity extends Activity {
     private final List<BluetoothTarget> bluetoothTargets = new ArrayList<>();
     private AndroidAutoConnection lastDetectedConnection = AndroidAutoConnection.fallback();
     private boolean suppressProfileSelectionLoad;
+    private boolean suppressMediaLevelerSave;
     private TextView statusView;
     private TextView currentRouteView;
     private TextView bluetoothInventoryView;
@@ -84,12 +85,15 @@ public final class MainActivity extends Activity {
     private CheckBox normalizeMediaDuringAndroidAutoCheckBox;
     private CheckBox normalizeMediaAlwaysCheckBox;
     private CheckBox mediaVolumeFloorFallbackCheckBox;
-    private CheckBox mediaDynamicsProcessingCheckBox;
+    private Spinner mediaLevelerSpinner;
+    private ArrayAdapter<String> mediaLevelerAdapter;
+    private TextView mediaLevelerLabel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         AppPrefs.removeLegacyMediaRelaySettings(this);
+        AppPrefs.migrateLegacyDynamicsProcessingSettings(this);
         controller = new AudioRouteController(this);
         setContentView(buildContentView());
         try {
@@ -345,13 +349,36 @@ public final class MainActivity extends Activity {
                 saveBooleanSetting(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, isChecked));
         content.addView(mediaVolumeFloorFallbackCheckBox, blockParams());
 
-        mediaDynamicsProcessingCheckBox = new CheckBox(this);
-        mediaDynamicsProcessingCheckBox.setText("Experimental stronger compressor/limiter");
-        mediaDynamicsProcessingCheckBox.setTextColor(getColor(R.color.aaarp_text));
-        mediaDynamicsProcessingCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_DYNAMICS_PROCESSING, false));
-        mediaDynamicsProcessingCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                saveBooleanSetting(AppPrefs.MEDIA_DYNAMICS_PROCESSING, isChecked));
-        content.addView(mediaDynamicsProcessingCheckBox, blockParams());
+        mediaLevelerLabel = text("Loudness leveling strength", 15, true);
+        mediaLevelerLabel.setTextColor(getColor(R.color.aaarp_text));
+        content.addView(mediaLevelerLabel, blockParams());
+
+        mediaLevelerSpinner = new Spinner(this);
+        mediaLevelerAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new ArrayList<>());
+        mediaLevelerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        mediaLevelerSpinner.setAdapter(mediaLevelerAdapter);
+        for (String label : MediaLevelerProfile.MODE_LABELS) {
+            mediaLevelerAdapter.add(label);
+        }
+        mediaLevelerAdapter.notifyDataSetChanged();
+        restoreMediaLevelerMode();
+        mediaLevelerSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (suppressMediaLevelerSave) {
+                    return;
+                }
+                saveStringSetting(
+                        AppPrefs.MEDIA_LEVELER_MODE,
+                        MediaLevelerProfile.modeForLabelIndex(position)
+                );
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
+        content.addView(mediaLevelerSpinner, blockParams());
 
         TextView notificationRouteLabel = text("Notification sound route during Android Auto", 15, true);
         notificationRouteLabel.setTextColor(getColor(R.color.aaarp_text));
@@ -745,8 +772,10 @@ public final class MainActivity extends Activity {
                 .append(settings.normalizeMediaAlways ? "on" : "off").append('\n');
         report.append("Use volume fallback for quiet media: ")
                 .append(settings.mediaVolumeFloorFallback ? "on" : "off").append('\n');
-        report.append("Use stronger compressor/limiter: ")
-                .append(settings.mediaDynamicsProcessing ? "on" : "off").append('\n');
+        report.append("Loudness leveling strength: ")
+                .append(settings.mediaLevelerMode).append('\n');
+        report.append("Leveling tuning: ")
+                .append(MediaLevelerProfile.forMode(settings.mediaLevelerMode).summary()).append('\n');
         report.append("Music volume: ").append(controller.musicVolumeSummary()).append('\n');
         report.append("Notification route during Android Auto: ")
                 .append(settings.notificationRouteMode).append('\n');
@@ -842,6 +871,7 @@ public final class MainActivity extends Activity {
                     throw new IOException("Could not open settings backup.");
                 }
                 SettingsBackup.RestoreResult result = SettingsBackup.restore(this, inputStream);
+                AppPrefs.migrateLegacyDynamicsProcessingSettings(this);
                 runOnUiThread(() -> {
                     refreshDevices();
                     restoreSettingsControls();
@@ -960,6 +990,28 @@ public final class MainActivity extends Activity {
         saveSelectedDevice();
         savePreferredBluetoothTarget();
         saveNotificationRouteMode();
+        saveMediaLevelerMode();
+    }
+
+    private void saveMediaLevelerMode() {
+        int index = mediaLevelerSpinner == null ? -1 : mediaLevelerSpinner.getSelectedItemPosition();
+        if (index < 0) {
+            return;
+        }
+        saveStringSetting(AppPrefs.MEDIA_LEVELER_MODE, MediaLevelerProfile.modeForLabelIndex(index));
+    }
+
+    private void restoreMediaLevelerMode() {
+        if (mediaLevelerSpinner == null) {
+            return;
+        }
+        String mode = prefString(AppPrefs.MEDIA_LEVELER_MODE, MediaLevelerProfile.DEFAULT_MODE);
+        suppressMediaLevelerSave = true;
+        try {
+            mediaLevelerSpinner.setSelection(MediaLevelerProfile.labelIndexForMode(mode));
+        } finally {
+            suppressMediaLevelerSave = false;
+        }
     }
 
     private void restoreNotificationRouteMode() {
@@ -995,7 +1047,7 @@ public final class MainActivity extends Activity {
         );
         normalizeMediaAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.NORMALIZE_MEDIA_ALWAYS, false));
         mediaVolumeFloorFallbackCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false));
-        mediaDynamicsProcessingCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_DYNAMICS_PROCESSING, false));
+        restoreMediaLevelerMode();
         suppressDuckingCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false));
         suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
         muteNotificationsDuringPlaybackCheckBox.setChecked(prefBoolean(AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false));
@@ -1026,8 +1078,12 @@ public final class MainActivity extends Activity {
         if (mediaVolumeFloorFallbackCheckBox != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
             mediaVolumeFloorFallbackCheckBox.setEnabled(normalizeMediaDuringAndroidAutoCheckBox.isChecked());
         }
-        if (mediaDynamicsProcessingCheckBox != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
-            mediaDynamicsProcessingCheckBox.setEnabled(normalizeMediaDuringAndroidAutoCheckBox.isChecked());
+        if (mediaLevelerSpinner != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
+            boolean levelerEnabled = normalizeMediaDuringAndroidAutoCheckBox.isChecked();
+            mediaLevelerSpinner.setEnabled(levelerEnabled);
+            if (mediaLevelerLabel != null) {
+                mediaLevelerLabel.setEnabled(levelerEnabled);
+            }
         }
     }
 
