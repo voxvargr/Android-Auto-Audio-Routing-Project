@@ -63,4 +63,40 @@ public final class TrustPolicyTest {
         assertNull(TrustPolicy.providerMethodForShortcutPackage(null));
         assertNull(TrustPolicy.providerMethodForShortcutPackage("com.example.fake"));
     }
+
+    @Test
+    public void adaptsOnlyTheThirdAndFourthNamedDockSlots() {
+        assertEquals(
+                TrustPolicy.VOLUME_UP_PACKAGE,
+                TrustPolicy.shortcutPackageForDockSlot("hotseat_three"));
+        assertEquals(
+                TrustPolicy.VOLUME_DOWN_PACKAGE,
+                TrustPolicy.shortcutPackageForDockSlot("hotseat_four"));
+
+        assertNull(TrustPolicy.shortcutPackageForDockSlot(null));
+        assertNull(TrustPolicy.shortcutPackageForDockSlot("hotseat_one"));
+        assertNull(TrustPolicy.shortcutPackageForDockSlot("hotseat_two"));
+        assertNull(TrustPolicy.shortcutPackageForDockSlot("hotseat_five"));
+        assertNull(TrustPolicy.shortcutPackageForDockSlot("HOTSEAT_THREE"));
+        assertNull(TrustPolicy.shortcutPackageForDockSlot("prefix_hotseat_three"));
+        assertNull(TrustPolicy.shortcutPackageForDockSlot("hotseat_four_extra"));
+    }
+
+    @Test
+    public void namedAndProfileBasedDockRoutesUseTheSameVolumeCommands() {
+        assertEquals(
+                TrustPolicy.shortcutPackageForDockFeed(TrustPolicy.PHONE_DOCK_FEED),
+                TrustPolicy.shortcutPackageForDockSlot(TrustPolicy.VOLUME_UP_DOCK_SLOT));
+        assertEquals(
+                TrustPolicy.shortcutPackageForDockFeed(TrustPolicy.RECENT_DOCK_FEED),
+                TrustPolicy.shortcutPackageForDockSlot(TrustPolicy.VOLUME_DOWN_DOCK_SLOT));
+        assertEquals(
+                TrustPolicy.VOLUME_UP_PROVIDER_METHOD,
+                TrustPolicy.providerMethodForShortcutPackage(
+                        TrustPolicy.shortcutPackageForDockSlot(TrustPolicy.VOLUME_UP_DOCK_SLOT)));
+        assertEquals(
+                TrustPolicy.VOLUME_DOWN_PROVIDER_METHOD,
+                TrustPolicy.providerMethodForShortcutPackage(
+                        TrustPolicy.shortcutPackageForDockSlot(TrustPolicy.VOLUME_DOWN_DOCK_SLOT)));
+    }
 }

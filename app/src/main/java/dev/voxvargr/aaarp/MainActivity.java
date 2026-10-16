@@ -13,6 +13,7 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -26,10 +27,15 @@ import android.widget.TextView;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_PERMISSIONS = 4100;
@@ -47,6 +53,16 @@ public final class MainActivity extends Activity {
             AppPrefs.NOTIFICATION_ROUTE_EARPIECE,
             AppPrefs.NOTIFICATION_ROUTE_BLUETOOTH
     };
+    private static final String[] MEDIA_LEVELER_LABELS = {
+            "Off (no leveling)",
+            "Gain only (legacy boost - no song matching)",
+            "Gentle leveling",
+            "Strong leveling (recommended)",
+            "Max leveling (most aggressive)"
+    };
+    private static final long RESTORE_UI_POLL_MS = 250L;
+    private static final AtomicBoolean SETTINGS_RESTORE_IN_PROGRESS = new AtomicBoolean();
+    private static final AtomicBoolean DIAGNOSTICS_SAVE_IN_PROGRESS = new AtomicBoolean();
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private AudioRouteController controller;
@@ -64,10 +80,14 @@ public final class MainActivity extends Activity {
     private AndroidAutoConnection lastDetectedConnection = AndroidAutoConnection.fallback();
     private boolean suppressProfileSelectionLoad;
     private boolean suppressMediaLevelerSave;
+    private boolean suppressSettingsUiWrites;
+    private boolean refreshAfterExternalRestore;
+    private final Runnable restoreUiStatePoll = this::reconcileSettingsRestoreUiState;
     private TextView statusView;
     private TextView currentRouteView;
     private TextView bluetoothInventoryView;
     private TextView logView;
+    private Button saveDiagnosticsButton;
     private EditText preferredTargetEditText;
     private CheckBox rootCheckBox;
     private CheckBox watchdogCheckBox;
@@ -84,7 +104,6 @@ public final class MainActivity extends Activity {
     private CheckBox muteNotificationsDuringPlaybackAlwaysCheckBox;
     private CheckBox normalizeMediaDuringAndroidAutoCheckBox;
     private CheckBox normalizeMediaAlwaysCheckBox;
-    private CheckBox mediaVolumeFloorFallbackCheckBox;
     private Spinner mediaLevelerSpinner;
     private ArrayAdapter<String> mediaLevelerAdapter;
     private TextView mediaLevelerLabel;
@@ -92,8 +111,12 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        AppPrefs.removeLegacyMediaRelaySettings(this);
-        AppPrefs.migrateLegacyDynamicsProcessingSettings(this);
+        boolean restoreWasRunning = isSettingsRestoreInProgress();
+        refreshAfterExternalRestore = restoreWasRunning;
+        if (!restoreWasRunning) {
+            AppPrefs.removeLegacyMediaRelaySettings(this);
+            AppPrefs.migrateLoudnessNormalizationSettings(this);
+        }
         controller = new AudioRouteController(this);
         setContentView(buildContentView());
         try {
@@ -106,8 +129,26 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        reconcileSettingsRestoreUiState();
+    }
+
+    @Override
+    protected void onPause() {
+        getWindow().getDecorView().removeCallbacks(restoreUiStatePoll);
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
-        executor.shutdownNow();
+        // A configuration change must not abandon a restore or a streamed history export.
+        // Let that already-authorized task finish and release its process-wide guard.
+        if (isSettingsRestoreInProgress() || DIAGNOSTICS_SAVE_IN_PROGRESS.get()) {
+            executor.shutdown();
+        } else {
+            executor.shutdownNow();
+        }
         super.onDestroy();
     }
 
@@ -242,8 +283,11 @@ public final class MainActivity extends Activity {
         rootCheckBox.setText("Use root for diagnostics and volume shortcuts");
         rootCheckBox.setTextColor(getColor(R.color.aaarp_text));
         rootCheckBox.setChecked(prefBoolean(AppPrefs.USE_ROOT, false));
-        rootCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.USE_ROOT, isChecked).apply());
+        rootCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (!isPreferenceWriteSuppressed()) {
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.USE_ROOT, isChecked).apply();
+            }
+        });
         content.addView(rootCheckBox, blockParams());
 
         watchdogCheckBox = new CheckBox(this);
@@ -261,6 +305,9 @@ public final class MainActivity extends Activity {
                 prefBoolean(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, false)
         );
         gpsWarmupDuringAndroidAutoCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isPreferenceWriteSuppressed()) {
+                return;
+            }
             saveBooleanSetting(AppPrefs.GPS_WARMUP_DURING_ANDROID_AUTO, isChecked);
             if (isChecked) {
                 requestGpsWarmupLocationAccess();
@@ -275,8 +322,11 @@ public final class MainActivity extends Activity {
         restoreAfterBootCheckBox.setText("Restore monitor after reboot");
         restoreAfterBootCheckBox.setTextColor(getColor(R.color.aaarp_text));
         restoreAfterBootCheckBox.setChecked(prefBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true));
-        restoreAfterBootCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                AppPrefs.get(this).edit().putBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, isChecked).apply());
+        restoreAfterBootCheckBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (!isPreferenceWriteSuppressed()) {
+                AppPrefs.get(this).edit().putBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, isChecked).apply();
+            }
+        });
         content.addView(restoreAfterBootCheckBox, blockParams());
 
         releaseAfterDisconnectCheckBox = new CheckBox(this);
@@ -322,7 +372,7 @@ public final class MainActivity extends Activity {
         content.addView(pinMediaToBluetoothDuringAndroidAutoCheckBox, blockParams());
 
         normalizeMediaDuringAndroidAutoCheckBox = new CheckBox(this);
-        normalizeMediaDuringAndroidAutoCheckBox.setText("Boost quiet media during Android Auto");
+        normalizeMediaDuringAndroidAutoCheckBox.setText("Keep songs at a consistent loudness during Android Auto");
         normalizeMediaDuringAndroidAutoCheckBox.setTextColor(getColor(R.color.aaarp_text));
         normalizeMediaDuringAndroidAutoCheckBox.setChecked(
                 prefBoolean(AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false)
@@ -333,21 +383,27 @@ public final class MainActivity extends Activity {
         });
         content.addView(normalizeMediaDuringAndroidAutoCheckBox, blockParams());
 
+        TextView mediaLevelerExplanation = text(
+                "AAARP uses an approximate stereo-linked RMS leveler, not measured per-track "
+                        + "LUFS. It only turns louder audio windows down toward a quiet anchor; "
+                        + "it never adds signal gain or changes your media-volume setting. "
+                        + "Only you control that volume, and exact perceived loudness is not "
+                        + "guaranteed.",
+                13,
+                false
+        );
+        mediaLevelerExplanation.setTextColor(getColor(R.color.aaarp_muted));
+        content.addView(mediaLevelerExplanation, blockParams());
+
         normalizeMediaAlwaysCheckBox = new CheckBox(this);
-        normalizeMediaAlwaysCheckBox.setText("Also boost quiet media outside Android Auto");
+        normalizeMediaAlwaysCheckBox.setText(
+                "Keep leveling active outside Android Auto, including earbuds (recommended)"
+        );
         normalizeMediaAlwaysCheckBox.setTextColor(getColor(R.color.aaarp_text));
-        normalizeMediaAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.NORMALIZE_MEDIA_ALWAYS, false));
+        normalizeMediaAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.NORMALIZE_MEDIA_ALWAYS, true));
         normalizeMediaAlwaysCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
                 saveBooleanSetting(AppPrefs.NORMALIZE_MEDIA_ALWAYS, isChecked));
         content.addView(normalizeMediaAlwaysCheckBox, blockParams());
-
-        mediaVolumeFloorFallbackCheckBox = new CheckBox(this);
-        mediaVolumeFloorFallbackCheckBox.setText("Use volume fallback if boost is not enough");
-        mediaVolumeFloorFallbackCheckBox.setTextColor(getColor(R.color.aaarp_text));
-        mediaVolumeFloorFallbackCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false));
-        mediaVolumeFloorFallbackCheckBox.setOnCheckedChangeListener((buttonView, isChecked) ->
-                saveBooleanSetting(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, isChecked));
-        content.addView(mediaVolumeFloorFallbackCheckBox, blockParams());
 
         mediaLevelerLabel = text("Loudness leveling strength", 15, true);
         mediaLevelerLabel.setTextColor(getColor(R.color.aaarp_text));
@@ -357,7 +413,7 @@ public final class MainActivity extends Activity {
         mediaLevelerAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new ArrayList<>());
         mediaLevelerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mediaLevelerSpinner.setAdapter(mediaLevelerAdapter);
-        for (String label : MediaLevelerProfile.MODE_LABELS) {
+        for (String label : MEDIA_LEVELER_LABELS) {
             mediaLevelerAdapter.add(label);
         }
         mediaLevelerAdapter.notifyDataSetChanged();
@@ -438,9 +494,13 @@ public final class MainActivity extends Activity {
         content.addView(rowThree, blockParams());
 
         LinearLayout rowFour = buttonRow();
-        rowFour.addView(button("Save Diagnostics", v -> saveRootDiagnostics()), weightParams());
+        saveDiagnosticsButton = button("Save Diagnostics", v -> saveRootDiagnostics());
+        rowFour.addView(saveDiagnosticsButton, weightParams());
         rowFour.addView(button("Battery Exempt", v -> requestBatteryExemption()), weightParams());
         content.addView(rowFour, blockParams());
+        content.addView(text("AAARP keeps a rolling 48-hour history while the monitor is running, "
+                + "including Bluetooth and audio changes. Save Diagnostics writes the retained "
+                + "history and a fresh snapshot to one text file.", 14, false), blockParams());
 
         LinearLayout rowFive = buttonRow();
         rowFive.addView(button("Backup Settings", v -> exportSettingsBackup()), weightParams());
@@ -493,6 +553,9 @@ public final class MainActivity extends Activity {
     }
 
     private void applySelectedRoute() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         String selectedKey = saveSelectedDevice();
         String preferredBluetoothTarget = savePreferredBluetoothTarget();
         saveNotificationRouteMode();
@@ -508,6 +571,9 @@ public final class MainActivity extends Activity {
     }
 
     private void clearRoute() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         setLog("Clearing route...");
         executor.execute(() -> {
             controller.clearRoute();
@@ -521,6 +587,9 @@ public final class MainActivity extends Activity {
     }
 
     private void startRouteMonitor() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         saveSelectedDevice();
         String preferredBluetoothTarget = savePreferredBluetoothTarget();
         saveNotificationRouteMode();
@@ -548,6 +617,9 @@ public final class MainActivity extends Activity {
     }
 
     private void stopRouteMonitor() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         Intent intent = new Intent(this, RoutingMonitorService.class).setAction(RoutingMonitorService.ACTION_STOP);
         startService(intent);
         AppPrefs.get(this).edit().putBoolean(AppPrefs.MONITOR_ENABLED, false).apply();
@@ -583,26 +655,71 @@ public final class MainActivity extends Activity {
     }
 
     private void saveRootDiagnostics() {
-        setLog("Collecting diagnostics for file...");
+        if (rejectActionDuringRestore()) {
+            return;
+        }
+        if (!DIAGNOSTICS_SAVE_IN_PROGRESS.compareAndSet(false, true)) {
+            setLog("A diagnostics file is already being saved.");
+            return;
+        }
+        boolean useRoot = rootCheckBox.isChecked();
+        saveDiagnosticsButton.setEnabled(false);
+        setLog("Saving the retained 48-hour history and collecting a fresh snapshot...");
+        AutoLogWriter.append(this, "diagnostics export requested monitorEnabled="
+                + prefBoolean(AppPrefs.MONITOR_ENABLED, false));
         executor.execute(() -> {
-            RootShell.ShellResult result = controller.rootDiagnostics();
-            String body = buildDiagnosticsReport(result);
             try {
-                String location = DiagnosticsFileWriter.write(this, body);
+                String body = collectDiagnosticsReport(useRoot);
+                String location = DiagnosticsFileWriter.write(this, output -> {
+                    output.write(body.getBytes(StandardCharsets.UTF_8));
+                    output.write("\n\n===== ROLLING APP HISTORY =====\n".getBytes(StandardCharsets.UTF_8));
+                    AutoLogWriter.writeHistory(this, output);
+                });
+                AutoLogWriter.append(this, "diagnostics export completed location=" + location);
                 runOnUiThread(() -> {
-                    updateStatus("Diagnostics saved.");
-                    setLog("Saved diagnostics to " + location);
+                    if (!isDestroyed()) {
+                        updateStatus("Diagnostics and history saved.");
+                        setLog("Saved the current snapshot and all retained history to " + location);
+                    }
                 });
             } catch (Exception e) {
+                AutoLogWriter.append(this, "diagnostics export failed: " + e.getMessage());
                 runOnUiThread(() -> {
-                    updateStatus("Save failed.");
-                    setLog("Could not save diagnostics: " + e.getMessage() + "\n\n" + body);
+                    if (!isDestroyed()) {
+                        updateStatus("Save failed.");
+                        setLog("Could not save diagnostics: " + e.getMessage()
+                                + "\nSaving does not clear the rolling history. Try Save Diagnostics again.");
+                    }
+                });
+            } finally {
+                DIAGNOSTICS_SAVE_IN_PROGRESS.set(false);
+                runOnUiThread(() -> {
+                    if (!isDestroyed()) {
+                        saveDiagnosticsButton.setEnabled(true);
+                    }
                 });
             }
         });
     }
 
+    private String collectDiagnosticsReport(boolean useRoot) {
+        try {
+            RootShell.ShellResult result = useRoot
+                    ? controller.rootDiagnostics()
+                    : new RootShell.ShellResult(true, 0,
+                            "Root diagnostics skipped: root support is disabled.\n");
+            return buildDiagnosticsReport(result, useRoot);
+        } catch (RuntimeException failure) {
+            // A snapshot/permission failure must not prevent exporting the existing history.
+            return "AAARP diagnostics\nSnapshot collection failed: " + failure.getMessage()
+                    + "\nThe retained app history follows.\n";
+        }
+    }
+
     private void detectAndroidAutoProfile() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         setLog("Detecting Android Auto connection...");
         ProfileSettings.ProfileEntry selectedBeforeDetection = selectedProfileEntry();
         String selectedProfileId = selectedBeforeDetection == null
@@ -664,6 +781,9 @@ public final class MainActivity extends Activity {
     }
 
     private void saveProfileForCurrentConnection() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         saveSelectedDevice();
         savePreferredBluetoothTarget();
         saveNotificationRouteMode();
@@ -708,6 +828,9 @@ public final class MainActivity extends Activity {
     }
 
     private void loadSelectedProfile() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         ProfileSettings.ProfileEntry entry = selectedProfileEntry();
         if (entry == null) {
             setLog("No profile selected.");
@@ -717,7 +840,7 @@ public final class MainActivity extends Activity {
     }
 
     private void loadProfile(ProfileSettings.ProfileEntry entry, boolean showLog) {
-        if (entry == null) {
+        if (entry == null || isSettingsRestoreInProgress()) {
             return;
         }
         ProfileSettings.loadProfileIntoCurrentSettings(this, entry.id);
@@ -730,12 +853,22 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private String buildDiagnosticsReport(RootShell.ShellResult result) {
+    private String buildDiagnosticsReport(RootShell.ShellResult result, boolean useRoot) {
         List<RouteDevice> snapshotRoutes = controller.listRouteDevices();
-        AndroidAutoConnection connection = controller.currentAndroidAutoConnection();
+        AndroidAutoConnection connection = useRoot
+                ? controller.currentAndroidAutoConnection()
+                : AndroidAutoConnection.fallback();
         ProfileSettings.MonitorSettings settings = ProfileSettings.monitorSettings(this, connection);
         StringBuilder report = new StringBuilder();
         report.append("AAARP diagnostics\n");
+        report.append("Current snapshot collected: ")
+                .append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(new Date()))
+                .append('\n');
+        report.append("Monitor enabled: ")
+                .append(prefBoolean(AppPrefs.MONITOR_ENABLED, false) ? "yes" : "no").append('\n');
+        report.append("Root support enabled: ").append(useRoot ? "yes" : "no").append('\n');
+        report.append("Saved history: up to 48 hours recorded by AAARP; no history can be recovered "
+                + "for periods when it was not recording.\n");
         report.append(BuildIdentity.describe(this));
         report.append("Android Auto installed: ").append(AndroidAutoStatus.isInstalled(this) ? "yes" : "no").append('\n');
         report.append("Current communication route: ").append(controller.currentCommunicationDevice()).append('\n');
@@ -766,13 +899,12 @@ public final class MainActivity extends Activity {
                 .append(settings.pauseBluetoothScoDuringMedia ? "on" : "off").append('\n');
         report.append("Keep media on Bluetooth during Android Auto: ")
                 .append(settings.pinMediaToBluetoothDuringAndroidAuto ? "on" : "off").append('\n');
-        report.append("Boost quiet media during Android Auto: ")
+        report.append("Consistent song loudness during Android Auto: ")
                 .append(settings.normalizeMediaDuringAndroidAuto ? "on" : "off").append('\n');
-        report.append("Boost quiet media outside Android Auto: ")
+        report.append("Consistent song loudness outside Android Auto: ")
                 .append(settings.normalizeMediaAlways ? "on" : "off").append('\n');
-        report.append("Use volume fallback for quiet media: ")
-                .append(settings.mediaVolumeFloorFallback ? "on" : "off").append('\n');
-        report.append("Loudness leveling strength: ")
+        report.append("Media volume ownership: user only (leveler never changes STREAM_MUSIC)\n");
+        report.append("Loudness leveling mode: ")
                 .append(settings.mediaLevelerMode).append('\n');
         report.append("Leveling tuning: ")
                 .append(MediaLevelerProfile.forMode(settings.mediaLevelerMode).summary()).append('\n');
@@ -795,6 +927,9 @@ public final class MainActivity extends Activity {
     }
 
     private void requestBatteryExemption() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             setLog("Battery optimization exemption is not needed on this Android version.");
             return;
@@ -817,6 +952,9 @@ public final class MainActivity extends Activity {
     }
 
     private void exportSettingsBackup() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         saveCurrentUiSettings();
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -831,6 +969,9 @@ public final class MainActivity extends Activity {
     }
 
     private void importSettingsBackup() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("application/json");
@@ -843,6 +984,9 @@ public final class MainActivity extends Activity {
     }
 
     private void writeSettingsBackup(Uri uri) {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         setLog("Writing settings backup...");
         executor.execute(() -> {
             try (OutputStream outputStream = getContentResolver().openOutputStream(uri)) {
@@ -864,29 +1008,63 @@ public final class MainActivity extends Activity {
     }
 
     private void readSettingsBackup(Uri uri) {
+        if (!beginSettingsRestore()) {
+            setLog("A settings restore is already in progress.");
+            return;
+        }
         setLog("Restoring settings backup...");
-        executor.execute(() -> {
-            try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
-                if (inputStream == null) {
-                    throw new IOException("Could not open settings backup.");
+        try {
+            executor.execute(() -> {
+                try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
+                    if (inputStream == null) {
+                        throw new IOException("Could not open settings backup.");
+                    }
+                    SettingsBackup.RestoreResult result = SettingsBackup.restore(this, inputStream);
+                    runOnUiThread(() -> {
+                        try {
+                            if (isFinishing() || isDestroyed()) {
+                                return;
+                            }
+                            refreshDevices();
+                            restoreSettingsControls();
+                            refreshProfiles();
+                            updateStatus(result.success
+                                    ? "Settings restored. Monitor stopped."
+                                    : "Settings restored; access needs attention. Monitor stopped.");
+                            setLog("Restored " + result.preferenceCount + " settings/profile entries."
+                                    + rootRestoreSummary(result.rootRestoreResult)
+                                    + "\n\nThe monitor remains stopped. Review the restored settings and access "
+                                    + "results, then tap Start Monitor when you are ready.");
+                        } finally {
+                            finishSettingsRestore();
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        try {
+                            if (isFinishing() || isDestroyed()) {
+                                return;
+                            }
+                            boolean monitorStopped = !prefBoolean(AppPrefs.MONITOR_ENABLED, false);
+                            updateStatus(monitorStopped
+                                    ? "Restore failed. Monitor stopped."
+                                    : "Restore failed before the monitor changed.");
+                            setLog("Could not restore settings backup: " + e.getMessage()
+                                    + (monitorStopped
+                                    ? "\n\nThe monitor remains stopped. Review the existing settings, then tap "
+                                    + "Start Monitor when you are ready."
+                                    : ""));
+                        } finally {
+                            finishSettingsRestore();
+                        }
+                    });
                 }
-                SettingsBackup.RestoreResult result = SettingsBackup.restore(this, inputStream);
-                AppPrefs.migrateLegacyDynamicsProcessingSettings(this);
-                runOnUiThread(() -> {
-                    refreshDevices();
-                    restoreSettingsControls();
-                    refreshProfiles();
-                    updateStatus("Settings restored.");
-                    setLog("Restored " + result.preferenceCount + " settings/profile entries."
-                            + rootRestoreSummary(result.rootRestoreResult));
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    updateStatus("Restore failed.");
-                    setLog("Could not restore settings backup: " + e.getMessage());
-                });
-            }
-        });
+            });
+        } catch (RuntimeException e) {
+            finishSettingsRestore();
+            updateStatus("Restore failed before it started.");
+            setLog("Could not start settings restore: " + e.getMessage());
+        }
     }
 
     private String rootRestoreSummary(SettingsBackup.RootRestoreResult result) {
@@ -896,9 +1074,11 @@ public final class MainActivity extends Activity {
         StringBuilder summary = new StringBuilder();
         summary.append("\nRoot restore: ").append(result.message);
         if (result.attempted && result.rootAvailable) {
-            summary.append("\nRuntime permissions requested: ").append(result.runtimePermissionCount);
+            summary.append("\nRuntime permissions requested and checked: ")
+                    .append(result.runtimePermissionCount);
             summary.append("\nBattery exemption requested: ")
                     .append(result.batteryExemptionAttempted ? "yes" : "no");
+            summary.append("\nAccess verification: ").append(result.success ? "passed" : "failed");
         }
         if (result.output.length() > 0) {
             summary.append("\n\n").append(result.output);
@@ -907,6 +1087,9 @@ public final class MainActivity extends Activity {
     }
 
     private void resetBluetoothNow() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         setLog("Resetting Bluetooth...");
         executor.execute(() -> {
             RootShell.ShellResult result = controller.resetBluetoothWithRoot();
@@ -975,14 +1158,23 @@ public final class MainActivity extends Activity {
     }
 
     private void saveStringSetting(String key, String value) {
+        if (isPreferenceWriteSuppressed()) {
+            return;
+        }
         ProfileSettings.saveActiveString(this, key, value);
     }
 
     private void removeStringSetting(String key) {
+        if (isPreferenceWriteSuppressed()) {
+            return;
+        }
         ProfileSettings.removeActiveString(this, key);
     }
 
     private void saveBooleanSetting(String key, boolean value) {
+        if (isPreferenceWriteSuppressed()) {
+            return;
+        }
         ProfileSettings.saveActiveBoolean(this, key, value);
     }
 
@@ -1045,8 +1237,7 @@ public final class MainActivity extends Activity {
         normalizeMediaDuringAndroidAutoCheckBox.setChecked(
                 prefBoolean(AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false)
         );
-        normalizeMediaAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.NORMALIZE_MEDIA_ALWAYS, false));
-        mediaVolumeFloorFallbackCheckBox.setChecked(prefBoolean(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false));
+        normalizeMediaAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.NORMALIZE_MEDIA_ALWAYS, true));
         restoreMediaLevelerMode();
         suppressDuckingCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING, false));
         suppressDuckingAlwaysCheckBox.setChecked(prefBoolean(AppPrefs.SUPPRESS_NOTIFICATION_DUCKING_ALWAYS, false));
@@ -1074,9 +1265,6 @@ public final class MainActivity extends Activity {
         }
         if (normalizeMediaAlwaysCheckBox != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
             normalizeMediaAlwaysCheckBox.setEnabled(normalizeMediaDuringAndroidAutoCheckBox.isChecked());
-        }
-        if (mediaVolumeFloorFallbackCheckBox != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
-            mediaVolumeFloorFallbackCheckBox.setEnabled(normalizeMediaDuringAndroidAutoCheckBox.isChecked());
         }
         if (mediaLevelerSpinner != null && normalizeMediaDuringAndroidAutoCheckBox != null) {
             boolean levelerEnabled = normalizeMediaDuringAndroidAutoCheckBox.isChecked();
@@ -1211,6 +1399,9 @@ public final class MainActivity extends Activity {
     }
 
     private void requestRuntimePermissions() {
+        if (isSettingsRestoreInProgress()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return;
         }
@@ -1238,6 +1429,9 @@ public final class MainActivity extends Activity {
     }
 
     private void requestGpsWarmupLocationAccess() {
+        if (isSettingsRestoreInProgress()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             setLog("GPS warm-up is enabled.");
             return;
@@ -1298,6 +1492,9 @@ public final class MainActivity extends Activity {
     }
 
     private void openLocationPermissionSettings() {
+        if (rejectActionDuringRestore()) {
+            return;
+        }
         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
         intent.setData(Uri.parse("package:" + getPackageName()));
         try {
@@ -1311,7 +1508,9 @@ public final class MainActivity extends Activity {
         try {
             return AppPrefs.get(this).getString(key, fallback);
         } catch (RuntimeException e) {
-            AppPrefs.get(this).edit().remove(key).apply();
+            if (!isPreferenceWriteSuppressed()) {
+                AppPrefs.get(this).edit().remove(key).apply();
+            }
             return fallback;
         }
     }
@@ -1320,8 +1519,78 @@ public final class MainActivity extends Activity {
         try {
             return AppPrefs.get(this).getBoolean(key, fallback);
         } catch (RuntimeException e) {
-            AppPrefs.get(this).edit().remove(key).apply();
+            if (!isPreferenceWriteSuppressed()) {
+                AppPrefs.get(this).edit().remove(key).apply();
+            }
             return fallback;
+        }
+    }
+
+    private boolean beginSettingsRestore() {
+        if (!SETTINGS_RESTORE_IN_PROGRESS.compareAndSet(false, true)) {
+            return false;
+        }
+        try {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+        } catch (RuntimeException e) {
+            SETTINGS_RESTORE_IN_PROGRESS.set(false);
+            throw e;
+        }
+        return true;
+    }
+
+    private void finishSettingsRestore() {
+        SETTINGS_RESTORE_IN_PROGRESS.set(false);
+        try {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+        } catch (RuntimeException ignored) {
+            // A replacement Activity will reconcile the process-wide flag in onResume().
+        }
+    }
+
+    private boolean rejectActionDuringRestore() {
+        if (!isSettingsRestoreInProgress()) {
+            return false;
+        }
+        setLog("Wait for the settings restore to finish before changing AAARP.");
+        return true;
+    }
+
+    private static boolean isSettingsRestoreInProgress() {
+        return SETTINGS_RESTORE_IN_PROGRESS.get();
+    }
+
+    private boolean isPreferenceWriteSuppressed() {
+        return isSettingsRestoreInProgress() || suppressSettingsUiWrites;
+    }
+
+    private void reconcileSettingsRestoreUiState() {
+        View decorView = getWindow().getDecorView();
+        decorView.removeCallbacks(restoreUiStatePoll);
+        if (isSettingsRestoreInProgress()) {
+            refreshAfterExternalRestore = true;
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+            decorView.postDelayed(restoreUiStatePoll, RESTORE_UI_POLL_MS);
+            return;
+        }
+
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+        if (!refreshAfterExternalRestore || controller == null || statusView == null) {
+            return;
+        }
+        refreshAfterExternalRestore = false;
+        suppressSettingsUiWrites = true;
+        try {
+            AppPrefs.removeLegacyMediaRelaySettings(this);
+            AppPrefs.migrateLoudnessNormalizationSettings(this);
+            refreshDevices();
+            restoreSettingsControls();
+            refreshProfiles();
+            updateStatus("Settings restore finished. Monitor stopped.");
+            setLog("The settings restore finished while this screen was being recreated. "
+                    + "Review the restored settings, then tap Start Monitor when you are ready.");
+        } finally {
+            suppressSettingsUiWrites = false;
         }
     }
 

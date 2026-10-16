@@ -1,20 +1,17 @@
 package dev.voxvargr.aaarp;
 
 /**
- * Tuning presets for the Android Auto media leveler.
+ * Tuning presets for AAARP's cross-app, downward-only RMS leveler.
  *
- * <p>The goal is loudness matching where nothing is ever turned down. A downward
- * compressor's net gain falls as input level rises, so the whole curve is anchored by its
- * loudest point: makeup gain is derived as {@code (LOUDEST_RMS_DBFS - threshold) *
- * (1 - 1/ratio)}, which pins the net gain of the loudest expected material to roughly
- * 0 dB. Every quieter input therefore receives strictly positive gain, and quiet tracks
- * receive the most. {@code STREAM_MUSIC} is never touched by the leveler.
+ * <p>The Android media-volume index remains entirely user-owned. Gentle, Strong, and Max never
+ * add signal gain: a stereo-linked limiter reduces louder windows toward a quiet anchor. A
+ * window passes unchanged when neither linked channel drives the detector above that anchor.
+ * The listener can then set the downstream {@code STREAM_MUSIC} volume once for the result.
  *
- * <p>Note the topology: quiet tracks sit <em>below</em> the threshold, so they pass the
- * compressor untouched and collect the full makeup gain, while loud tracks are pushed
- * down toward them. Setting the threshold beneath the quiet material instead would
- * compress everything equally and level nothing. Release times stay long so the leveler
- * rides a song's overall level rather than pumping on individual drum hits.
+ * <p>{@link android.media.audiofx.DynamicsProcessing} does not expose integrated LUFS, track
+ * boundaries, true-peak detection, or per-player audio sessions here. These presets therefore
+ * cannot promise identical perceived loudness or prove peak safety. They are a real-time,
+ * window-RMS approximation on Android's global mix.
  */
 final class MediaLevelerProfile {
     static final String MODE_OFF = "off";
@@ -25,19 +22,15 @@ final class MediaLevelerProfile {
 
     static final String DEFAULT_MODE = MODE_STRONG;
 
-    /**
-     * Assumed RMS of the loudest material in a modern playlist. Makeup gain is derived so
-     * that this level comes out at unity, which is what guarantees nothing is attenuated.
-     */
-    static final float LOUDEST_RMS_DBFS = -5.0f;
+    /** Pure-Java description of the DynamicsProcessing architecture used by the controller. */
+    static final int DYNAMICS_CHANNEL_COUNT = 2;
+    static final boolean DYNAMICS_MBC_IN_USE = false;
+    static final int DYNAMICS_MBC_BAND_COUNT = 0;
+    static final boolean DYNAMICS_LIMITER_IN_USE = true;
+    static final int LIMITER_LINK_GROUP = 0;
 
-    /** Makeup gain that pins {@link #LOUDEST_RMS_DBFS} to unity for a threshold/ratio pair. */
-    static float derivedMakeupGainDb(float thresholdDb, float ratio) {
-        if (ratio <= 1f) {
-            return 0f;
-        }
-        return (LOUDEST_RMS_DBFS - thresholdDb) * (1f - (1f / ratio));
-    }
+    /** Representative loud-song RMS level used only for off-device curve comparisons. */
+    static final float LOUD_REFERENCE_DBFS = -8.0f;
 
     /** Stored-preference values, in the order shown in the settings spinner. */
     static final String[] MODE_VALUES = {
@@ -58,52 +51,35 @@ final class MediaLevelerProfile {
     };
 
     final String mode;
-    /** LoudnessEnhancer target gain in millibels, applied alongside the dynamics stage. */
+    /** LoudnessEnhancer target used only when gain-only is the requested mode. */
     final int loudnessGainMb;
-    /**
-     * LoudnessEnhancer gain to use when the dynamics stage is unavailable (pre-API 28) or
-     * fails to initialise. Without compression there is no makeup gain, so this larger
-     * flat boost is the only lift available.
-     */
-    final int fallbackLoudnessGainMb;
     final boolean dynamicsEnabled;
+    final float anchorLevelDbFs;
     final float inputGainDb;
-    final float mbcThresholdDb;
-    final float mbcRatio;
-    final float mbcAttackMs;
-    final float mbcReleaseMs;
-    final float mbcPreGainDb;
-    /** Makeup gain: the "bring quiet tracks up" control. */
-    final float mbcPostGainDb;
-    final float mbcNoiseGateThresholdDb;
+    final int limiterLinkGroup;
     final float limiterThresholdDb;
     final float limiterRatio;
     final float limiterAttackMs;
     final float limiterReleaseMs;
+    final float limiterPostGainDb;
 
-    private MediaLevelerProfile(String mode, int loudnessGainMb, int fallbackLoudnessGainMb,
-                                boolean dynamicsEnabled,
-                                float inputGainDb, float mbcThresholdDb, float mbcRatio,
-                                float mbcAttackMs, float mbcReleaseMs, float mbcPreGainDb,
-                                float mbcPostGainDb, float mbcNoiseGateThresholdDb,
+    private MediaLevelerProfile(String mode, int loudnessGainMb,
+                                boolean dynamicsEnabled, float anchorLevelDbFs,
+                                float inputGainDb, int limiterLinkGroup,
                                 float limiterThresholdDb, float limiterRatio,
-                                float limiterAttackMs, float limiterReleaseMs) {
+                                float limiterAttackMs, float limiterReleaseMs,
+                                float limiterPostGainDb) {
         this.mode = mode;
         this.loudnessGainMb = loudnessGainMb;
-        this.fallbackLoudnessGainMb = fallbackLoudnessGainMb;
         this.dynamicsEnabled = dynamicsEnabled;
+        this.anchorLevelDbFs = anchorLevelDbFs;
         this.inputGainDb = inputGainDb;
-        this.mbcThresholdDb = mbcThresholdDb;
-        this.mbcRatio = mbcRatio;
-        this.mbcAttackMs = mbcAttackMs;
-        this.mbcReleaseMs = mbcReleaseMs;
-        this.mbcPreGainDb = mbcPreGainDb;
-        this.mbcPostGainDb = mbcPostGainDb;
-        this.mbcNoiseGateThresholdDb = mbcNoiseGateThresholdDb;
+        this.limiterLinkGroup = limiterLinkGroup;
         this.limiterThresholdDb = limiterThresholdDb;
         this.limiterRatio = limiterRatio;
         this.limiterAttackMs = limiterAttackMs;
         this.limiterReleaseMs = limiterReleaseMs;
+        this.limiterPostGainDb = limiterPostGainDb;
     }
 
     static MediaLevelerProfile forMode(String rawMode) {
@@ -111,35 +87,35 @@ final class MediaLevelerProfile {
         switch (safeMode) {
             case MODE_OFF:
                 return new MediaLevelerProfile(MODE_OFF,
-                        0, 0, false,
-                        0f, 0f, 1f, 0f, 0f, 0f, 0f, -100f,
-                        0f, 1f, 0f, 0f);
+                        0, false, 0f, 0f, LIMITER_LINK_GROUP,
+                        0f, 1f, 0f, 0f, 0f);
             case MODE_GAIN_ONLY:
-                // Legacy behavior: flat LoudnessEnhancer gain, no dynamics stage.
                 return new MediaLevelerProfile(MODE_GAIN_ONLY,
-                        1200, 1200, false,
-                        0f, 0f, 1f, 0f, 0f, 0f, 0f, -100f,
-                        0f, 1f, 0f, 0f);
+                        1200, false, 0f, 0f, LIMITER_LINK_GROUP,
+                        0f, 1f, 0f, 0f, 0f);
             case MODE_GENTLE:
-                return leveling(MODE_GENTLE, 100, 600, -18f, 2.5f, 20f, 400f, -90f, -1.0f, 15f, 100f);
+                return leveling(MODE_GENTLE, -24f, 4.0f, 1f, 140f);
             case MODE_MAX:
-                return leveling(MODE_MAX, 200, 1200, -28f, 6.0f, 30f, 900f, -75f, -0.5f, 25f, 120f);
+                return leveling(MODE_MAX, -34f, 50.0f, 1f, 100f);
             case MODE_STRONG:
             default:
-                return leveling(MODE_STRONG, 150, 900, -24f, 4.0f, 20f, 650f, -80f, -0.7f, 20f, 100f);
+                return leveling(MODE_STRONG, -28f, 24.0f, 1f, 100f);
         }
     }
 
-    private static MediaLevelerProfile leveling(String mode, int loudnessGainMb,
-                                                int fallbackLoudnessGainMb, float thresholdDb,
-                                                float ratio, float attackMs, float releaseMs,
-                                                float noiseGateDb, float limiterThresholdDb,
-                                                float limiterRatio, float limiterReleaseMs) {
+    private static MediaLevelerProfile leveling(String mode, float anchorLevelDbFs,
+                                                 float ratio, float attackMs, float releaseMs) {
         return new MediaLevelerProfile(mode,
-                loudnessGainMb, fallbackLoudnessGainMb, true,
-                0f, thresholdDb, ratio, attackMs, releaseMs,
-                0f, derivedMakeupGainDb(thresholdDb, ratio), noiseGateDb,
-                limiterThresholdDb, limiterRatio, 1f, limiterReleaseMs);
+                0, true, anchorLevelDbFs,
+                0f, LIMITER_LINK_GROUP,
+                anchorLevelDbFs, ratio, attackMs, releaseMs, 0f);
+    }
+
+    private static float compressedLevelDb(float levelDbFs, float thresholdDb, float ratio) {
+        if (ratio <= 1f || levelDbFs <= thresholdDb) {
+            return levelDbFs;
+        }
+        return thresholdDb + ((levelDbFs - thresholdDb) / ratio);
     }
 
     static String normalizeMode(String rawMode) {
@@ -156,11 +132,11 @@ final class MediaLevelerProfile {
     }
 
     /**
-     * Maps the retired {@code media_dynamics_processing} checkbox onto a leveler mode so
-     * existing installs and saved profiles keep working after an update.
+     * Every legacy normalization configuration migrates to real leveling. Gain-only remains
+     * available solely as an explicit user choice after migration.
      */
-    static String migratedModeFromLegacyFlag(boolean legacyDynamicsProcessing) {
-        return legacyDynamicsProcessing ? MODE_STRONG : MODE_GAIN_ONLY;
+    static String migratedModeFromLegacyFlag(boolean ignoredLegacyDynamicsProcessing) {
+        return MODE_STRONG;
     }
 
     static int labelIndexForMode(String rawMode) {
@@ -181,61 +157,90 @@ final class MediaLevelerProfile {
     }
 
     boolean anyProcessingEnabled() {
-        return loudnessGainMb > 0 || dynamicsEnabled;
+        return loudnessGainMb != 0 || dynamicsEnabled;
     }
 
-    /**
-     * Net gain applied to steady-state material at {@code inputLevelDbFs}, ignoring the
-     * limiter (which only catches transient peaks). Used to verify that the leveler lifts
-     * quiet tracks toward loud ones without ever attenuating anything.
-     */
-    float netGainDbAt(float inputLevelDbFs) {
-        float gain = loudnessGainMb / 100f;
+    /** Steady-state window-RMS curve estimate; this is not a PCM or integrated-LUFS result. */
+    float outputLevelDbAt(float inputLevelDbFs) {
         if (!dynamicsEnabled) {
-            return gain;
+            return inputLevelDbFs + (loudnessGainMb / 100f);
         }
-        float level = inputLevelDbFs + inputGainDb + mbcPreGainDb;
-        float compressed = level > mbcThresholdDb
-                ? mbcThresholdDb + ((level - mbcThresholdDb) / mbcRatio)
-                : level;
-        return gain + (compressed + mbcPostGainDb) - inputLevelDbFs;
+        float level = inputLevelDbFs + inputGainDb;
+        return compressedLevelDb(level, limiterThresholdDb, limiterRatio) + limiterPostGainDb;
     }
 
-    /** Approximate lift applied to a quiet track that sits well under the threshold. */
-    float approximateQuietTrackGainDb() {
-        return netGainDbAt(mbcThresholdDb - 10f);
+    /** Net signal gain. Real leveling modes are constrained to zero or negative gain. */
+    float netGainDbAt(float inputLevelDbFs) {
+        return outputLevelDbAt(inputLevelDbFs) - inputLevelDbFs;
     }
 
-    /** Net gain applied to the loudest expected material; the floor of the gain curve. */
-    float loudestTrackGainDb() {
-        return netGainDbAt(LOUDEST_RMS_DBFS);
+    float loudReferenceOutputDbFs() {
+        return outputLevelDbAt(LOUD_REFERENCE_DBFS);
+    }
+
+    /** How much the leveler closes a loud/quiet mastering gap, in dB. */
+    float levelingRangeReductionDb(float quietLevelDbFs) {
+        float before = LOUD_REFERENCE_DBFS - quietLevelDbFs;
+        float after = loudReferenceOutputDbFs() - outputLevelDbAt(quietLevelDbFs);
+        return before - after;
     }
 
     /**
-     * How much closer together the loudest and quietest material ends up, in dB. This is
-     * the actual measure of "everything at the same volume".
+     * Continuous-time scalar estimate for a loud-to-quiet RMS-envelope transition.
+     *
+     * <p>This follows the shape of AOSP's first-order, linear-amplitude release detector but
+     * deliberately omits FFT framing, overlap, PCM crest factor, vendor differences, and track
+     * boundaries. It is a tuning calculation, not proof of audible or device behavior.
      */
-    float levelingRangeReductionDb(float quietLevelDbFs) {
-        float before = LOUDEST_RMS_DBFS - quietLevelDbFs;
-        float after = (LOUDEST_RMS_DBFS + loudestTrackGainDb())
-                - (quietLevelDbFs + netGainDbAt(quietLevelDbFs));
-        return before - after;
+    float modeledLoudToQuietGapDbAt(float quietLevelDbFs, float elapsedMs) {
+        if (!dynamicsEnabled || limiterReleaseMs <= 0f) {
+            return Math.abs(loudReferenceOutputDbFs() - outputLevelDbAt(quietLevelDbFs));
+        }
+        float safeElapsed = Math.max(0f, elapsedMs);
+        double loudEnvelope = dbToLinear(LOUD_REFERENCE_DBFS + inputGainDb);
+        double quietEnvelope = dbToLinear(quietLevelDbFs + inputGainDb);
+        double envelope = quietEnvelope + (loudEnvelope - quietEnvelope)
+                * Math.exp(-safeElapsed / limiterReleaseMs);
+        float envelopeDb = linearToDb(envelope);
+        float detectorGainDb = compressedLevelDb(
+                envelopeDb,
+                limiterThresholdDb,
+                limiterRatio
+        ) - envelopeDb;
+        float transitioningQuietOutput = quietLevelDbFs + inputGainDb
+                + detectorGainDb + limiterPostGainDb;
+        return Math.abs(loudReferenceOutputDbFs() - transitioningQuietOutput);
+    }
+
+    private static double dbToLinear(float levelDb) {
+        return Math.pow(10.0, levelDb / 20.0);
+    }
+
+    private static float linearToDb(double level) {
+        return (float) (20.0 * Math.log10(Math.max(level, 1.0e-6)));
     }
 
     String summary() {
         if (!anyProcessingEnabled()) {
-            return "leveler=off";
+            return "leveler=off streamMusic=user_owned";
         }
         StringBuilder summary = new StringBuilder("leveler=").append(mode);
-        summary.append(" loudnessMb=").append(loudnessGainMb);
+        summary.append(" streamMusic=user_owned");
         if (dynamicsEnabled) {
-            summary.append(" thresholdDb=").append(mbcThresholdDb)
-                    .append(" ratio=").append(mbcRatio)
-                    .append(" releaseMs=").append(mbcReleaseMs)
-                    .append(" makeupDb=").append(mbcPostGainDb)
-                    .append(" ceilingDb=").append(limiterThresholdDb);
+            summary.append(" processor=stereo_linked_limiter")
+                    .append(" detector=window_rms")
+                    .append(" direction=downward_only")
+                    .append(" anchorDbFs=").append(anchorLevelDbFs)
+                    .append(" inputGainDb=").append(inputGainDb)
+                    .append(" thresholdDb=").append(limiterThresholdDb)
+                    .append(" ratio=").append(limiterRatio)
+                    .append(" attackMs=").append(limiterAttackMs)
+                    .append(" releaseMs=").append(limiterReleaseMs)
+                    .append(" postGainDb=").append(limiterPostGainDb)
+                    .append(" linkGroup=").append(limiterLinkGroup)
+                    .append(" mbc=off");
         } else {
-            summary.append(" dynamics=off");
+            summary.append(" processor=gain_only gainMb=").append(loudnessGainMb);
         }
         return summary.toString();
     }

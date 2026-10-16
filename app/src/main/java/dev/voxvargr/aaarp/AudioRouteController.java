@@ -4,11 +4,11 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
+import android.media.audiofx.AudioEffect;
 import android.media.audiofx.DynamicsProcessing;
 import android.media.audiofx.LoudnessEnhancer;
 import android.os.Build;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,7 +20,8 @@ final class AudioRouteController {
     private final RootShell rootShell;
     private LoudnessEnhancer mediaBoost;
     private DynamicsProcessing dynamicsBoost;
-    private MediaLevelerProfile activeLevelerProfile;
+    private MediaLevelerActivation activeMediaLevelerActivation =
+            MediaLevelerActivation.off(MediaLevelerProfile.MODE_OFF, "not_requested");
     private String ownedCommunicationRouteKey;
 
     AudioRouteController(Context context) {
@@ -258,59 +259,83 @@ final class AudioRouteController {
         return audioManager.isMusicActive();
     }
 
-    String enableMediaBoost(String levelerMode) {
+    MediaLevelerActivation enableMediaBoost(String levelerMode) {
         MediaLevelerProfile profile = MediaLevelerProfile.forMode(levelerMode);
-        activeLevelerProfile = profile;
-
         if (!profile.anyProcessingEnabled()) {
-            return disableMediaBoost();
+            String cleanup = disableMediaBoost();
+            activeMediaLevelerActivation = MediaLevelerActivation.off(profile.mode, cleanup);
+            return activeMediaLevelerActivation;
         }
 
-        StringBuilder summary = new StringBuilder();
-
-        // The dynamics stage runs first: its makeup gain provides most of the lift, and
-        // whether it came up decides how much flat LoudnessEnhancer gain is safe to add.
-        boolean dynamicsActive = false;
-        String dynamicsSummary;
         if (profile.dynamicsEnabled) {
-            dynamicsSummary = enableDynamicsBoost(profile);
-            dynamicsActive = dynamicsBoost != null;
-        } else {
-            dynamicsSummary = disableDynamicsBoost();
-        }
-
-        int targetGainMb = profile.dynamicsEnabled && !dynamicsActive
-                ? profile.fallbackLoudnessGainMb
-                : profile.loudnessGainMb;
-
-        if (targetGainMb > 0) {
-            try {
-                if (mediaBoost == null) {
-                    mediaBoost = new LoudnessEnhancer(GLOBAL_AUDIO_SESSION);
-                }
-                mediaBoost.setTargetGain(targetGainMb);
-                mediaBoost.setEnabled(true);
-                summary.append("loudness=on gainMb=").append((int) mediaBoost.getTargetGain());
-                if (profile.dynamicsEnabled && !dynamicsActive) {
-                    summary.append(" (fallback)");
-                }
-            } catch (RuntimeException e) {
+            String dynamicsFailure;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // Never stack LoudnessEnhancer with DynamicsProcessing. Android does not
+                // guarantee ordering between independent session-zero insert effects.
                 releaseMediaBoostQuietly();
-                summary.append("loudness=failed ").append(shortMessage(e));
+                try {
+                    String detail = enableDynamicsBoost(profile);
+                    activeMediaLevelerActivation = MediaLevelerActivation.active(
+                            profile.mode,
+                            "dynamics",
+                            detail + " " + profile.summary()
+                    );
+                    return activeMediaLevelerActivation;
+                } catch (RuntimeException e) {
+                    releaseDynamicsBoostQuietly();
+                    dynamicsFailure = shortMessage(e);
+                }
+            } else {
+                dynamicsFailure = "requires_api_28 device_api=" + Build.VERSION.SDK_INT;
             }
-        } else {
-            releaseMediaBoostQuietly();
-            summary.append("loudness=off");
+
+            activeMediaLevelerActivation = MediaLevelerActivation.failed(
+                    profile.mode,
+                    "dynamics",
+                    "bypassed dynamics_unavailable=" + dynamicsFailure
+            );
+            return activeMediaLevelerActivation;
         }
 
-        summary.append(" ").append(dynamicsSummary);
-        summary.append(" ").append(profile.summary());
-        return summary.toString();
+        return enableGainOnlyProcessor(profile, profile.loudnessGainMb);
     }
 
     /** Describes the leveler tuning currently applied, for diagnostics output. */
     String activeLevelerSummary() {
-        return activeLevelerProfile == null ? "leveler=off" : activeLevelerProfile.summary();
+        return activeMediaLevelerActivation.summary();
+    }
+
+    /** Re-checks ownership because another global-session effect can take control at runtime. */
+    MediaLevelerActivation inspectMediaLeveler() {
+        if (!activeMediaLevelerActivation.processingActive()) {
+            return activeMediaLevelerActivation;
+        }
+        AudioEffect effect = "dynamics".equals(activeMediaLevelerActivation.processor)
+                ? dynamicsBoost
+                : mediaBoost;
+        try {
+            if (effect == null) {
+                throw new IllegalStateException("effect_missing");
+            }
+            if (!effect.hasControl()) {
+                throw new IllegalStateException("effect_control_lost");
+            }
+            if (!effect.getEnabled()) {
+                throw new IllegalStateException("effect_reported_disabled");
+            }
+            return activeMediaLevelerActivation;
+        } catch (RuntimeException e) {
+            String requestedMode = activeMediaLevelerActivation.requestedMode;
+            String processor = activeMediaLevelerActivation.processor;
+            releaseMediaBoostQuietly();
+            releaseDynamicsBoostQuietly();
+            activeMediaLevelerActivation = MediaLevelerActivation.failed(
+                    requestedMode,
+                    processor,
+                    "runtime_loss=" + shortMessage(e)
+            );
+            return activeMediaLevelerActivation;
+        }
     }
 
     String disableMediaBoost() {
@@ -318,48 +343,89 @@ final class AudioRouteController {
         if (mediaBoost == null) {
             summary.append("loudness=off already");
         } else {
+            LoudnessEnhancer effect = mediaBoost;
+            mediaBoost = null;
             try {
-                mediaBoost.setEnabled(false);
-                mediaBoost.release();
+                effect.setEnabled(false);
                 summary.append("loudness=off");
             } catch (RuntimeException e) {
                 summary.append("loudness=clear_failed ").append(shortMessage(e));
-            } finally {
-                mediaBoost = null;
+            }
+            try {
+                effect.release();
+            } catch (RuntimeException e) {
+                summary.append(" release_failed=").append(shortMessage(e));
             }
         }
         summary.append(" ").append(disableDynamicsBoost());
-        activeLevelerProfile = null;
+        activeMediaLevelerActivation = MediaLevelerActivation.off(
+                MediaLevelerProfile.MODE_OFF,
+                summary.toString()
+        );
         return summary.toString();
     }
 
-    private String enableDynamicsBoost(MediaLevelerProfile profile) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-            return "dynamics=unavailable";
-        }
+    private MediaLevelerActivation enableGainOnlyProcessor(MediaLevelerProfile profile,
+                                                           int targetGainMb) {
+        releaseDynamicsBoostQuietly();
         try {
-            if (dynamicsBoost == null) {
-                DynamicsProcessing.Config config = new DynamicsProcessing.Config.Builder(
-                        DynamicsProcessing.VARIANT_FAVOR_TIME_RESOLUTION,
-                        2,
-                        false,
-                        0,
-                        true,
-                        1,
-                        false,
-                        0,
-                        true
-                )
-                        .setInputGainAllChannelsTo(profile.inputGainDb)
-                        .build();
-                dynamicsBoost = new DynamicsProcessing(0, GLOBAL_AUDIO_SESSION, config);
+            if (mediaBoost == null) {
+                mediaBoost = new LoudnessEnhancer(GLOBAL_AUDIO_SESSION);
             }
-            applyDynamicsSettings(profile);
-            dynamicsBoost.setEnabled(true);
-            return "dynamics=on inputGainDb=" + profile.inputGainDb;
+            mediaBoost.setTargetGain(targetGainMb);
+            requireEffectEnabled(mediaBoost, mediaBoost.setEnabled(true));
+            String detail = "gainMb=" + (int) mediaBoost.getTargetGain()
+                    + " requested_no_song_matching";
+            activeMediaLevelerActivation =
+                    MediaLevelerActivation.degraded(profile.mode, "gain_only", detail);
+            return activeMediaLevelerActivation;
         } catch (RuntimeException e) {
-            releaseDynamicsBoostQuietly();
-            return "dynamics=failed " + shortMessage(e);
+            releaseMediaBoostQuietly();
+            activeMediaLevelerActivation = MediaLevelerActivation.failed(
+                    profile.mode,
+                    "gain_only",
+                    "error=" + shortMessage(e)
+            );
+            return activeMediaLevelerActivation;
+        }
+    }
+
+    @SuppressLint({"NewApi", "InlinedApi"})
+    private String enableDynamicsBoost(MediaLevelerProfile profile) {
+        if (dynamicsBoost == null) {
+            DynamicsProcessing.Config config = new DynamicsProcessing.Config.Builder(
+                    // AOSP's legacy and current default implementations reliably construct
+                    // the frequency-resolution engine; the time-resolution variant can be
+                    // advertised by the API yet rejected or left uninitialized by the effect.
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                    MediaLevelerProfile.DYNAMICS_CHANNEL_COUNT,
+                    false,
+                    0,
+                    MediaLevelerProfile.DYNAMICS_MBC_IN_USE,
+                    MediaLevelerProfile.DYNAMICS_MBC_BAND_COUNT,
+                    false,
+                    0,
+                    MediaLevelerProfile.DYNAMICS_LIMITER_IN_USE
+            )
+                    .setInputGainAllChannelsTo(profile.inputGainDb)
+                    .build();
+            dynamicsBoost = new DynamicsProcessing(0, GLOBAL_AUDIO_SESSION, config);
+        }
+        applyDynamicsSettings(profile);
+        requireEffectEnabled(dynamicsBoost, dynamicsBoost.setEnabled(true));
+        return "architecture=frequency mbc=off limiter=stereo_linked"
+                + " inputGainDb=" + profile.inputGainDb;
+    }
+
+    private void requireEffectEnabled(AudioEffect effect, int enableStatus) {
+        if (enableStatus != AudioEffect.SUCCESS) {
+            throw new IllegalStateException("enable_status=" + enableStatus);
+        }
+        if (!effect.hasControl()) {
+            throw new IllegalStateException("effect_control_lost");
+        }
+        if (!effect.getEnabled()) {
+            throw new IllegalStateException("effect_reported_disabled");
         }
     }
 
@@ -367,51 +433,25 @@ final class AudioRouteController {
         if (dynamicsBoost == null) {
             return "dynamics=off already";
         }
+        DynamicsProcessing effect = dynamicsBoost;
+        dynamicsBoost = null;
+        String summary = "dynamics=off";
         try {
-            dynamicsBoost.setEnabled(false);
-            dynamicsBoost.release();
-            return "dynamics=off";
+            effect.setEnabled(false);
         } catch (RuntimeException e) {
-            return "dynamics=clear_failed " + shortMessage(e);
-        } finally {
-            dynamicsBoost = null;
+            summary = "dynamics=clear_failed " + shortMessage(e);
         }
-    }
-
-    VolumeAdjustment ensureMusicVolumeAtLeastPercent(int percent) {
-        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        int safePercent = Math.max(0, Math.min(percent, 100));
-        int targetVolume = Math.max(0, Math.min(maxVolume, Math.round(maxVolume * safePercent / 100f)));
-        if (currentVolume < targetVolume) {
-            setMusicStreamVolume(targetVolume);
-            return new VolumeAdjustment(currentVolume, targetVolume, maxVolume, true);
+        try {
+            effect.release();
+        } catch (RuntimeException e) {
+            summary += " release_failed=" + shortMessage(e);
         }
-        return new VolumeAdjustment(currentVolume, currentVolume, maxVolume, false);
-    }
-
-    String restoreMusicVolumeIfStillAt(int expectedVolume, int restoreVolume) {
-        if (restoreVolume < 0) {
-            return "musicVolumeRestore=skipped";
-        }
-        int currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        if (currentVolume == expectedVolume) {
-            setMusicStreamVolume(restoreVolume);
-            return "musicVolumeRestore=restored " + restoreVolume + "/" + maxVolume;
-        }
-        return "musicVolumeRestore=left_alone current=" + currentVolume + "/" + maxVolume
-                + " expected=" + expectedVolume
-                + " restore=" + restoreVolume;
+        return summary;
     }
 
     String musicVolumeSummary() {
         return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                 + "/" + audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-    }
-
-    int musicStreamVolume() {
-        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
     }
 
     String reassertBluetoothMediaPath(String selectedKey, String preferredBluetoothTarget) {
@@ -429,14 +469,6 @@ final class AudioRouteController {
             result.append(" setParameters(A2dpSuspended=false)=").append(shortMessage(e));
         }
 
-        try {
-            Method method = AudioManager.class.getDeclaredMethod("setBluetoothA2dpOn", boolean.class);
-            method.setAccessible(true);
-            method.invoke(audioManager, true);
-            result.append(" setBluetoothA2dpOn(true)=ok");
-        } catch (Throwable e) {
-            result.append(" setBluetoothA2dpOn(true)=").append(shortMessage(e));
-        }
         return result.toString();
     }
 
@@ -471,10 +503,23 @@ final class AudioRouteController {
     }
 
     boolean isCallOrCommunicationActive() {
-        int mode = audioManager.getMode();
-        return mode == AudioManager.MODE_IN_CALL
-                || mode == AudioManager.MODE_IN_COMMUNICATION
-                || mode == AudioManager.MODE_RINGTONE;
+        return isAutomaticRoutingProtectedForMode(audioManager.getMode());
+    }
+
+    boolean isCallOrRingingActive() {
+        return isOwnedRouteCleanupProtectedForMode(audioManager.getMode());
+    }
+
+    static boolean isAutomaticRoutingProtectedForMode(int mode) {
+        // Screening, redirected calls, Assistant modes, and future modes must also yield
+        // to the platform. Only normal mode is safe for automatic audio changes.
+        return mode != AudioManager.MODE_NORMAL;
+    }
+
+    static boolean isOwnedRouteCleanupProtectedForMode(int mode) {
+        // Settings restore may unwind our own legacy MODE_IN_COMMUNICATION request.
+        // Its caller must verify route ownership before using that one exception.
+        return mode != AudioManager.MODE_NORMAL && mode != AudioManager.MODE_IN_COMMUNICATION;
     }
 
     String audioModeSummary() {
@@ -488,6 +533,12 @@ final class AudioRouteController {
                 return "MODE_IN_CALL";
             case AudioManager.MODE_IN_COMMUNICATION:
                 return "MODE_IN_COMMUNICATION";
+            case AudioManager.MODE_CALL_SCREENING:
+                return "MODE_CALL_SCREENING";
+            case AudioManager.MODE_CALL_REDIRECT:
+                return "MODE_CALL_REDIRECT";
+            case AudioManager.MODE_COMMUNICATION_REDIRECT:
+                return "MODE_COMMUNICATION_REDIRECT";
             default:
                 return "mode=" + mode;
         }
@@ -697,16 +748,6 @@ final class AudioRouteController {
         return message.replace('\n', ' ');
     }
 
-    private void setMusicStreamVolume(int volume) {
-        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int safeVolume = Math.max(0, Math.min(volume, maxVolume));
-        audioManager.setStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                safeVolume,
-                AudioManager.FLAG_REMOVE_SOUND_AND_VIBRATE
-        );
-    }
-
     private void releaseMediaBoostQuietly() {
         if (mediaBoost == null) {
             return;
@@ -726,27 +767,16 @@ final class AudioRouteController {
         }
         dynamicsBoost.setInputGainAllChannelsTo(profile.inputGainDb);
 
-        // Slow release makes this ride the song's overall level instead of pumping on
-        // individual drum hits; the low threshold is what lets quiet tracks be caught at
-        // all, and post gain is the makeup that lifts them toward the limiter ceiling.
-        DynamicsProcessing.MbcBand band = dynamicsBoost.getMbcBandByChannelIndex(0, 0);
-        band.setPreGain(profile.mbcPreGainDb);
-        band.setPostGain(profile.mbcPostGainDb);
-        band.setThreshold(profile.mbcThresholdDb);
-        band.setRatio(profile.mbcRatio);
-        band.setAttackTime(profile.mbcAttackMs);
-        band.setReleaseTime(profile.mbcReleaseMs);
-        band.setNoiseGateThreshold(profile.mbcNoiseGateThresholdDb);
-        band.setExpanderRatio(1.0f);
-        band.setEnabled(true);
-        dynamicsBoost.setMbcBandAllChannelsTo(0, band);
-
+        // MBC has no public cross-channel link control. Using only the final linked limiter
+        // gives both stereo channels one attenuation factor and avoids changing their balance.
+        // Input and post gain stay at unity, so the real leveling modes can only attenuate.
         DynamicsProcessing.Limiter limiter = dynamicsBoost.getLimiterByChannelIndex(0);
+        limiter.setLinkGroup(profile.limiterLinkGroup);
         limiter.setThreshold(profile.limiterThresholdDb);
         limiter.setRatio(profile.limiterRatio);
         limiter.setAttackTime(profile.limiterAttackMs);
         limiter.setReleaseTime(profile.limiterReleaseMs);
-        limiter.setPostGain(0.0f);
+        limiter.setPostGain(profile.limiterPostGainDb);
         limiter.setEnabled(true);
         dynamicsBoost.setLimiterAllChannelsTo(limiter);
     }
@@ -871,22 +901,72 @@ final class AudioRouteController {
         }
     }
 
-    static final class VolumeAdjustment {
-        final int previousVolume;
-        final int currentVolume;
-        final int maxVolume;
-        final boolean changed;
+    enum MediaLevelerStatus {
+        OFF,
+        ACTIVE,
+        DEGRADED,
+        FAILED
+    }
 
-        VolumeAdjustment(int previousVolume, int currentVolume, int maxVolume, boolean changed) {
-            this.previousVolume = previousVolume;
-            this.currentVolume = currentVolume;
-            this.maxVolume = maxVolume;
-            this.changed = changed;
+    static final class MediaLevelerActivation {
+        final MediaLevelerStatus status;
+        final String requestedMode;
+        final String processor;
+        final String detail;
+
+        private MediaLevelerActivation(MediaLevelerStatus status, String requestedMode,
+                                       String processor, String detail) {
+            this.status = status;
+            this.requestedMode = requestedMode == null ? MediaLevelerProfile.DEFAULT_MODE : requestedMode;
+            this.processor = processor == null ? "none" : processor;
+            this.detail = detail == null ? "" : detail;
+        }
+
+        static MediaLevelerActivation off(String requestedMode, String detail) {
+            return new MediaLevelerActivation(
+                    MediaLevelerStatus.OFF,
+                    requestedMode,
+                    "none",
+                    detail
+            );
+        }
+
+        static MediaLevelerActivation active(String requestedMode, String processor, String detail) {
+            return new MediaLevelerActivation(
+                    MediaLevelerStatus.ACTIVE,
+                    requestedMode,
+                    processor,
+                    detail
+            );
+        }
+
+        static MediaLevelerActivation degraded(String requestedMode, String processor, String detail) {
+            return new MediaLevelerActivation(
+                    MediaLevelerStatus.DEGRADED,
+                    requestedMode,
+                    processor,
+                    detail
+            );
+        }
+
+        static MediaLevelerActivation failed(String requestedMode, String processor, String detail) {
+            return new MediaLevelerActivation(
+                    MediaLevelerStatus.FAILED,
+                    requestedMode,
+                    processor,
+                    detail
+            );
+        }
+
+        boolean processingActive() {
+            return status == MediaLevelerStatus.ACTIVE || status == MediaLevelerStatus.DEGRADED;
         }
 
         String summary() {
-            return "musicVolume=" + currentVolume + "/" + maxVolume
-                    + (changed ? " raisedFrom=" + previousVolume : " unchanged");
+            return "levelerStatus=" + status.name().toLowerCase(java.util.Locale.US)
+                    + " requested=" + requestedMode
+                    + " processor=" + processor
+                    + " " + detail;
         }
     }
 }

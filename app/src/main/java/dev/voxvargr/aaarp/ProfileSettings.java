@@ -150,9 +150,9 @@ final class ProfileSettings {
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false);
         copyProfileBoolean(prefs, editor, safeId, AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false);
-        copyProfileBoolean(prefs, editor, safeId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false);
-        copyProfileBoolean(prefs, editor, safeId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false);
+        copyProfileBoolean(prefs, editor, safeId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, true);
         copyProfileString(prefs, editor, safeId, AppPrefs.MEDIA_LEVELER_MODE);
+        editor.remove(AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK);
         editor.putString(ACTIVE_PROFILE_ID, safeId);
         editor.apply();
     }
@@ -176,8 +176,8 @@ final class ProfileSettings {
                 getBoolean(prefs, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false),
                 getBoolean(prefs, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false),
                 getBoolean(prefs, profileId, AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false),
-                getBoolean(prefs, profileId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false),
-                getBoolean(prefs, profileId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false),
+                getBoolean(prefs, profileId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, true),
+                false,
                 getString(prefs, profileId, AppPrefs.MEDIA_LEVELER_MODE, MediaLevelerProfile.DEFAULT_MODE),
                 profileId
         );
@@ -271,8 +271,7 @@ final class ProfileSettings {
         putProfileBoolean(prefs, editor, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS, false);
         putProfileBoolean(prefs, editor, profileId, AppPrefs.NORMALIZE_MEDIA_DURING_ANDROID_AUTO, false);
-        putProfileBoolean(prefs, editor, profileId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, false);
-        putProfileBoolean(prefs, editor, profileId, AppPrefs.MEDIA_VOLUME_FLOOR_FALLBACK, false);
+        putProfileBoolean(prefs, editor, profileId, AppPrefs.NORMALIZE_MEDIA_ALWAYS, true);
         putProfileString(prefs, editor, profileId, AppPrefs.MEDIA_LEVELER_MODE);
     }
 
@@ -344,7 +343,7 @@ final class ProfileSettings {
         }
     }
 
-    private static String profileKey(String profileId, String key) {
+    static String profileKey(String profileId, String key) {
         return PROFILE_PREFIX + cleanProfileId(profileId) + "_" + key;
     }
 
@@ -417,7 +416,9 @@ final class ProfileSettings {
             this.muteNotificationsDuringPlaybackAlways = muteNotificationsDuringPlaybackAlways;
             this.normalizeMediaDuringAndroidAuto = normalizeMediaDuringAndroidAuto;
             this.normalizeMediaAlways = normalizeMediaAlways;
-            this.mediaVolumeFloorFallback = mediaVolumeFloorFallback;
+            // Kept as a compatibility field until all service diagnostics are updated.
+            // The constructor is always passed false and no profile can persist this option.
+            this.mediaVolumeFloorFallback = false;
             this.mediaLevelerMode = MediaLevelerProfile.normalizeMode(mediaLevelerMode);
             this.profileId = profileId;
         }

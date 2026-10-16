@@ -3,13 +3,18 @@ package dev.voxvargr.aaarp.aatrusthook;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.InstallSourceInfo;
+import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -27,21 +32,23 @@ import io.github.libxposed.api.XposedModule;
  * returned for the exact helper package IDs and overrides only those instances' initiating package
  * name. Dock callbacks synchronously enqueue a command through the already-protected main AAARP
  * provider instead of cold-starting either helper or opening a car-app screen. Any lookup or hook
- * failure leaves the platform result unchanged.</p>
+ * failure leaves the platform result unchanged. Named hotseat views provide an adaptive path,
+ * with structurally checked profiles for Android Auto 17.3 and 17.4 as a fallback.</p>
  */
 public final class AndroidAutoTrustHook extends XposedModule {
     private static final String TAG = "AAARP-TrustHook";
     private static final String PLAY_STORE_PACKAGE = "com.android.vending";
     private static final String APPLICATION_PACKAGE_MANAGER =
             "android.app.ApplicationPackageManager";
-    // JADX renders Android Auto's default-package classes under a synthetic "defpackage"
-    // directory. Their real DEX descriptors are Lmkx;, Lnhc;, Lnhr;, Lnkn;, and Lnhl;.
-    private static final String GEARHEAD_DOCK_OBSERVER = "mkx";
-    private static final String GEARHEAD_RAIL_FRAGMENT = "nhc";
-    private static final String GEARHEAD_RAIL_VIEW_MODEL = "nhr";
-    private static final String GEARHEAD_HOTSEAT_ITEM = "nkn";
-    private static final String GEARHEAD_HOTSEAT_ROLE = "nhl";
-    private static final String GEARHEAD_DOCK_CLICK_LISTENER = "nkt";
+    private static final String RAIL_HOTSEAT_ITEM_VIEW =
+            "com.google.android.apps.auto.components.system.facetbar.hotseat.RailHotseatItemView";
+    private static final String LARGE_ICON_RESOURCE = "large_icon";
+    // Android Auto's obfuscated classes live in the default package, despite JADX's synthetic
+    // "defpackage" directory. Validate their shapes before installing a matching profile.
+    private static final DockProfile[] KNOWN_DOCK_PROFILES = {
+            new DockProfile("17.4", "mle", "cE", "nhe", "nhs", "nkp", "nhn", "nkv", false),
+            new DockProfile("17.3", "mkx", "eB", "nhc", "nhr", "nkn", "nhl", "nkt", true)
+    };
 
     private final AtomicBoolean installAttempted = new AtomicBoolean();
     private final Map<InstallSourceInfo, String> markedInstallSources =
@@ -49,6 +56,8 @@ public final class AndroidAutoTrustHook extends XposedModule {
     private final Set<String> loggedSpoofs = ConcurrentHashMap.newKeySet();
     private final Set<Integer> loggedDockFeeds = ConcurrentHashMap.newKeySet();
     private final Set<Integer> loggedDockFailures = ConcurrentHashMap.newKeySet();
+    private final Set<String> loggedAdaptiveSlots = ConcurrentHashMap.newKeySet();
+    private final Set<String> loggedAdaptiveFailures = ConcurrentHashMap.newKeySet();
     private final Set<String> loggedDirectClicks = ConcurrentHashMap.newKeySet();
     private final Set<String> loggedDirectClickFailures = ConcurrentHashMap.newKeySet();
     private volatile boolean gearheadProcess;
@@ -80,20 +89,31 @@ public final class AndroidAutoTrustHook extends XposedModule {
         }
 
         try {
-            installFixedDockHook(param.getClassLoader());
-            report(Log.INFO, "Gearhead 17.3 fixed Volume+ / Volume- dock hook active");
+            installAdaptiveDockViewHook(param.getClassLoader());
+            report(Log.INFO, "Self-adapting named-view Volume+ / Volume- dock hook active");
         } catch (Throwable error) {
-            // Android Auto obfuscates these names and may change them in a future update. Keep
-            // the stable trust hooks active if this version-specific dock hook no longer matches.
-            reportError("Fixed dock hook inactive; Android Auto dock left unchanged", error);
+            reportError("Self-adapting dock hook inactive", error);
         }
 
+        DockProfile activeProfile = null;
         try {
-            installDirectDockClickHook(param.getClassLoader());
-            report(Log.INFO, "Gearhead 17.3 no-navigation dock click hook active");
+            activeProfile = installDirectDockClickHook(param.getClassLoader());
+            report(Log.INFO,
+                    "Gearhead " + activeProfile.version + " no-navigation dock click hook active");
         } catch (Throwable error) {
-            // Leave the ordinary helper launch intact if this version-specific click seam moves.
-            reportError("Direct dock click hook inactive; normal helper launch retained", error);
+            reportError("Known direct dock click profiles inactive", error);
+        }
+
+        // Only substitute the model once its click path is known to keep the car screen open.
+        if (activeProfile != null) {
+            try {
+                installFixedDockHook(param.getClassLoader(), activeProfile);
+                report(Log.INFO,
+                        "Gearhead " + activeProfile.version
+                                + " fixed Volume+ / Volume- dock hook active");
+            } catch (Throwable error) {
+                reportError("Known fixed-dock profile inactive", error);
+            }
         }
     }
 
@@ -143,26 +163,165 @@ public final class AndroidAutoTrustHook extends XposedModule {
                 });
     }
 
-    private void installFixedDockHook(ClassLoader gearheadClassLoader)
+    private void installAdaptiveDockViewHook(ClassLoader gearheadClassLoader)
+            throws ReflectiveOperationException {
+        Class<?> hotseatViewClass = Class.forName(
+                RAIL_HOTSEAT_ITEM_VIEW,
+                false,
+                gearheadClassLoader);
+        Method bindMethod = findHotseatBindMethod(hotseatViewClass);
+        bindMethod.setAccessible(true);
+        hook(bindMethod)
+                .setExceptionMode(ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    Object result = chain.proceed();
+                    Object target = chain.getThisObject();
+                    if (target instanceof View) {
+                        applyAdaptiveDockShortcut((View) target);
+                    }
+                    return result;
+                });
+    }
+
+    private Method findHotseatBindMethod(Class<?> hotseatViewClass)
+            throws NoSuchMethodException {
+        Method match = null;
+        for (Method method : hotseatViewClass.getDeclaredMethods()) {
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (method.getReturnType() == void.class
+                    && parameterTypes.length == 1
+                    && declaresComponentNameField(parameterTypes[0])) {
+                if (match != null) {
+                    throw new NoSuchMethodException("Ambiguous RailHotseatItemView bind method");
+                }
+                match = method;
+            }
+        }
+        if (match == null) {
+            throw new NoSuchMethodException("RailHotseatItemView bind method not found");
+        }
+        return match;
+    }
+
+    private boolean declaresComponentNameField(Class<?> candidate) {
+        for (Field field : candidate.getDeclaredFields()) {
+            if (field.getType() == ComponentName.class) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void applyAdaptiveDockShortcut(View hotseatView) {
+        try {
+            String slot = hotseatView.getResources().getResourceEntryName(hotseatView.getId());
+            String shortcutPackage = TrustPolicy.shortcutPackageForDockSlot(slot);
+            if (shortcutPackage == null) {
+                return;
+            }
+            String label = TrustPolicy.VOLUME_UP_PACKAGE.equals(shortcutPackage)
+                    ? "Volume up"
+                    : "Volume down";
+            try {
+                Context context = hotseatView.getContext();
+                int iconId = context.getResources().getIdentifier(
+                        LARGE_ICON_RESOURCE,
+                        "id",
+                        TrustPolicy.GEARHEAD_PACKAGE);
+                View iconCandidate = iconId == 0 ? null : hotseatView.findViewById(iconId);
+                ImageView iconView = iconCandidate instanceof ImageView
+                        ? (ImageView) iconCandidate
+                        : findClickableImageView(hotseatView);
+                if (iconView == null) {
+                    throw new IllegalStateException("large_icon view not found");
+                }
+                Drawable shortcutIcon = context.getPackageManager()
+                        .getApplicationIcon(shortcutPackage);
+                iconView.setImageTintList(null);
+                iconView.setImageDrawable(shortcutIcon);
+                iconView.setContentDescription(label);
+                iconView.setVisibility(View.VISIBLE);
+                iconView.setOnClickListener(clickedView -> {
+                    Context clickContext = clickedView.getContext();
+                    Context appContext = clickContext.getApplicationContext();
+                    callShortcutProvider(
+                            appContext == null ? clickContext : appContext,
+                            Uri.parse("content://" + TrustPolicy.VOLUME_SHORTCUT_PROVIDER_AUTHORITY),
+                            TrustPolicy.providerMethodForShortcutPackage(shortcutPackage),
+                            shortcutPackage);
+                });
+                if (loggedAdaptiveSlots.add(slot)) {
+                    report(Log.INFO, "Self-adapted " + slot + " to " + shortcutPackage);
+                }
+            } catch (PackageManager.NameNotFoundException error) {
+                reportAdaptiveFailure(slot, error);
+            } catch (Throwable error) {
+                reportAdaptiveFailure(slot, error);
+            }
+        } catch (Throwable ignored) {
+            // Views without the expected resource ID are outside this adaptive hook's scope.
+        }
+    }
+
+    private ImageView findClickableImageView(View view) {
+        if (view instanceof ImageView && view.hasOnClickListeners()) {
+            return (ImageView) view;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int index = 0; index < group.getChildCount(); index++) {
+            ImageView match = findClickableImageView(group.getChildAt(index));
+            if (match != null) {
+                return match;
+            }
+        }
+        return null;
+    }
+
+    private void reportAdaptiveFailure(String slot, Throwable error) {
+        if (loggedAdaptiveFailures.add(slot)) {
+            reportError("Unable to self-adapt " + slot, error);
+        }
+    }
+
+    private DockProfile installDirectDockClickHook(ClassLoader gearheadClassLoader)
+            throws ReflectiveOperationException {
+        ReflectiveOperationException lastFailure = null;
+        for (DockProfile profile : KNOWN_DOCK_PROFILES) {
+            try {
+                installDirectDockClickHook(gearheadClassLoader, profile);
+                return profile;
+            } catch (ReflectiveOperationException error) {
+                lastFailure = error;
+            }
+        }
+        throw new ReflectiveOperationException(
+                "No structurally valid Gearhead click profile",
+                lastFailure);
+    }
+
+    private void installFixedDockHook(ClassLoader gearheadClassLoader, DockProfile profile)
             throws ReflectiveOperationException {
         Class<?> dockObserverClass = Class.forName(
-                GEARHEAD_DOCK_OBSERVER,
+                profile.observerClass,
                 false,
                 gearheadClassLoader);
         Class<?> railFragmentClass = Class.forName(
-                GEARHEAD_RAIL_FRAGMENT,
+                profile.railFragmentClass,
                 false,
                 gearheadClassLoader);
         Class<?> railViewModelClass = Class.forName(
-                GEARHEAD_RAIL_VIEW_MODEL,
+                profile.railViewModelClass,
                 false,
                 gearheadClassLoader);
         Class<?> hotseatItemClass = Class.forName(
-                GEARHEAD_HOTSEAT_ITEM,
+                profile.hotseatItemClass,
                 false,
                 gearheadClassLoader);
         Class<?> hotseatRoleClass = Class.forName(
-                GEARHEAD_HOTSEAT_ROLE,
+                profile.hotseatRoleClass,
                 false,
                 gearheadClassLoader);
 
@@ -172,25 +331,32 @@ public final class AndroidAutoTrustHook extends XposedModule {
         observerOwnerField.setAccessible(true);
         Field railViewModelField = railFragmentClass.getDeclaredField("Q");
         railViewModelField.setAccessible(true);
-        Field phoneRoleField = hotseatRoleClass.getDeclaredField("a");
-        phoneRoleField.setAccessible(true);
-        Object phoneRole = phoneRoleField.get(null);
-        Field recentRoleField = hotseatRoleClass.getDeclaredField("g");
-        recentRoleField.setAccessible(true);
-        Object recentRole = recentRoleField.get(null);
+        if (!hotseatRoleClass.isEnum()) {
+            throw new NoSuchFieldException("Hotseat role is not an enum");
+        }
+        Object phoneRole = enumConstant(hotseatRoleClass, "PHONE");
+        Object recentRole = enumConstant(hotseatRoleClass, "RECENT");
 
-        Method createHotseatItem = railViewModelClass.getDeclaredMethod(
-                "k",
-                railViewModelClass,
-                ComponentName.class,
-                hotseatRoleClass,
-                boolean.class,
-                boolean.class,
-                boolean.class,
-                int.class);
+        Method createHotseatItem = profile.staticFactory
+                ? railViewModelClass.getDeclaredMethod(
+                        "k", railViewModelClass, ComponentName.class, hotseatRoleClass,
+                        boolean.class, boolean.class, boolean.class, int.class)
+                : railViewModelClass.getDeclaredMethod(
+                        "k", ComponentName.class, hotseatRoleClass,
+                        boolean.class, boolean.class, boolean.class);
         createHotseatItem.setAccessible(true);
-        Method bindDockFeed = dockObserverClass.getDeclaredMethod("eB", Object.class);
+        if (createHotseatItem.getReturnType() != hotseatItemClass
+                || Modifier.isStatic(createHotseatItem.getModifiers()) != profile.staticFactory) {
+            throw new NoSuchMethodException("Hotseat factory validation failed");
+        }
+        Method bindDockFeed = dockObserverClass.getDeclaredMethod(profile.observerMethod, Object.class);
         bindDockFeed.setAccessible(true);
+        if (bindDockFeed.getReturnType() != void.class
+                || dockFeedField.getType() != int.class
+                || !observerOwnerField.getType().isAssignableFrom(railFragmentClass)
+                || railViewModelField.getType() != railViewModelClass) {
+            throw new NoSuchMethodException("Dock observer structure validation failed");
+        }
 
         hook(bindDockFeed)
                 .setExceptionMode(ExceptionMode.PROTECTIVE)
@@ -214,17 +380,15 @@ public final class AndroidAutoTrustHook extends XposedModule {
                         Object role = dockFeed == TrustPolicy.PHONE_DOCK_FEED
                                 ? phoneRole
                                 : recentRole;
-                        fixedItem = createHotseatItem.invoke(
-                                null,
-                                railViewModel,
-                                new ComponentName(
-                                        shortcutPackage,
-                                        TrustPolicy.VOLUME_SHORTCUT_SERVICE),
-                                role,
-                                false,
-                                false,
-                                false,
-                                28);
+                        ComponentName component = new ComponentName(
+                                shortcutPackage,
+                                TrustPolicy.VOLUME_SHORTCUT_SERVICE);
+                        fixedItem = profile.staticFactory
+                                ? createHotseatItem.invoke(
+                                        null, railViewModel, component, role,
+                                        false, false, false, 28)
+                                : createHotseatItem.invoke(
+                                        railViewModel, component, role, false, false, false);
                     } catch (Throwable error) {
                         if (loggedDockFailures.add(dockFeed)) {
                             reportError(
@@ -243,14 +407,14 @@ public final class AndroidAutoTrustHook extends XposedModule {
                 });
     }
 
-    private void installDirectDockClickHook(ClassLoader gearheadClassLoader)
+    private void installDirectDockClickHook(ClassLoader gearheadClassLoader, DockProfile profile)
             throws ReflectiveOperationException {
         Class<?> clickListenerClass = Class.forName(
-                GEARHEAD_DOCK_CLICK_LISTENER,
+                profile.clickListenerClass,
                 false,
                 gearheadClassLoader);
         Class<?> hotseatItemClass = Class.forName(
-                GEARHEAD_HOTSEAT_ITEM,
+                profile.hotseatItemClass,
                 false,
                 gearheadClassLoader);
         Field listenerItemField = clickListenerClass.getDeclaredField("a");
@@ -259,6 +423,12 @@ public final class AndroidAutoTrustHook extends XposedModule {
         itemComponentField.setAccessible(true);
         Method onClick = clickListenerClass.getDeclaredMethod("onClick", View.class);
         onClick.setAccessible(true);
+        if (!View.OnClickListener.class.isAssignableFrom(clickListenerClass)
+                || onClick.getReturnType() != void.class
+                || !listenerItemField.getType().isAssignableFrom(hotseatItemClass)
+                || itemComponentField.getType() != ComponentName.class) {
+            throw new NoSuchMethodException("Dock click listener structure validation failed");
+        }
 
         hook(onClick)
                 .setExceptionMode(ExceptionMode.PROTECTIVE)
@@ -271,7 +441,11 @@ public final class AndroidAutoTrustHook extends XposedModule {
                     if (!(componentValue instanceof ComponentName)) {
                         return chain.proceed();
                     }
-                    String shortcutPackage = ((ComponentName) componentValue).getPackageName();
+                    ComponentName component = (ComponentName) componentValue;
+                    if (!TrustPolicy.VOLUME_SHORTCUT_SERVICE.equals(component.getClassName())) {
+                        return chain.proceed();
+                    }
+                    String shortcutPackage = component.getPackageName();
                     String providerMethod = TrustPolicy.providerMethodForShortcutPackage(
                             shortcutPackage);
                     if (providerMethod == null) {
@@ -312,6 +486,11 @@ public final class AndroidAutoTrustHook extends XposedModule {
                 });
     }
 
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Object enumConstant(Class<?> enumClass, String name) {
+        return Enum.valueOf((Class) enumClass, name);
+    }
+
     private void callShortcutProvider(
             Context context,
             Uri commandUri,
@@ -347,5 +526,39 @@ public final class AndroidAutoTrustHook extends XposedModule {
     private void reportError(String message, Throwable error) {
         Log.e(TAG, message, error);
         log(Log.ERROR, TAG, message, error);
+    }
+
+    private static final class DockProfile {
+        final String version;
+        final String observerClass;
+        final String observerMethod;
+        final String railFragmentClass;
+        final String railViewModelClass;
+        final String hotseatItemClass;
+        final String hotseatRoleClass;
+        final String clickListenerClass;
+        final boolean staticFactory;
+
+        DockProfile(
+                String version,
+                String observerClass,
+                String observerMethod,
+                String railFragmentClass,
+                String railViewModelClass,
+                String hotseatItemClass,
+                String hotseatRoleClass,
+                String clickListenerClass,
+                boolean staticFactory
+        ) {
+            this.version = version;
+            this.observerClass = observerClass;
+            this.observerMethod = observerMethod;
+            this.railFragmentClass = railFragmentClass;
+            this.railViewModelClass = railViewModelClass;
+            this.hotseatItemClass = hotseatItemClass;
+            this.hotseatRoleClass = hotseatRoleClass;
+            this.clickListenerClass = clickListenerClass;
+            this.staticFactory = staticFactory;
+        }
     }
 }

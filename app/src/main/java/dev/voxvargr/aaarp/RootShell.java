@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 final class RootShell {
-    private static final int MAX_OUTPUT_CHARS = 32000;
+    static final int MAX_OUTPUT_CHARS = 32000;
     private static final String TRUNCATED_OUTPUT = "\n[AAARP diagnostics truncated]\n";
     private static final long MUSIC_VOLUME_ADJUST_TIMEOUT_MS = 2000L;
     private static final String[] SU_CANDIDATES = {
@@ -56,17 +56,17 @@ final class RootShell {
             if (!done.await(timeoutMs, TimeUnit.MILLISECONDS)) {
                 process.destroy();
                 appendOutputLine(output, "Timed out.");
-                return new ShellResult(false, -1, output.toString());
+                return new ShellResult(false, -1, outputText(output));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             process.destroy();
             appendOutputLine(output, "Interrupted.");
-            return new ShellResult(false, -1, output.toString());
+            return new ShellResult(false, -1, outputText(output));
         }
 
         int code = exitCode.get();
-        return new ShellResult(code == 0, code, output.toString());
+        return new ShellResult(code == 0, code, outputText(output));
     }
 
     boolean isAvailable() {
@@ -93,9 +93,23 @@ final class RootShell {
     }
 
     ShellResult diagnostics() {
-        // Keep recording/input evidence ahead of broad dumps so it survives MAX_OUTPUT_CHARS.
-        String command = "echo '--- id ---'; id; "
-                + "echo '--- installed AAARP identity ---'; "
+        return run(diagnosticsCommand(false), 8000);
+    }
+
+    ShellResult autoLogSnapshot() {
+        return run(diagnosticsCommand(true), 10000);
+    }
+
+    static String diagnosticsCommand(boolean automatic) {
+        StringBuilder command = new StringBuilder();
+        command.append(automatic
+                ? "echo '--- auto log snapshot ---'; date; "
+                : "echo '--- id ---'; id; ");
+        if (!automatic) {
+            command.append("echo '--- Android build ---'; "
+                    + "getprop ro.product.manufacturer; getprop ro.product.model; "
+                    + "getprop ro.build.version.release; getprop ro.build.version.sdk; "
+                    + "echo '--- installed AAARP identity ---'; "
                 + "dumpsys package dev.voxvargr.aaarp 2>/dev/null "
                 + "| grep -E 'versionCode=|versionName=|firstInstallTime=|lastUpdateTime=' "
                 + "| head -n 4 || true; "
@@ -107,102 +121,78 @@ final class RootShell {
                 + "sha256sum \"$AAARP_APK\" 2>/dev/null "
                 + "|| toybox sha256sum \"$AAARP_APK\" 2>/dev/null "
                 + "|| echo 'unavailable'; "
-                + "fi; "
-                + "echo '--- recent audio recording history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'rec (start|update|stop).*src:' "
-                + "| tail -n 32 || true; "
-                + "echo '--- current audio policy input clients ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| sed -n '/^[[:space:]]*Inputs/,/^[[:space:]]*Total Effects/p' "
-                + "| head -n 80 || true; "
-                + "echo '--- Android Auto processes ---'; "
-                + "pidof com.google.android.projection.gearhead 2>/dev/null || true; "
-                + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
-                + "echo '--- appops audio focus ---'; "
-                + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get android TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.android.systemui TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.projection.gearhead TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.apps.messaging TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "echo '--- appops microphone access ---'; "
-                + "cmd appops get com.google.android.projection.gearhead RECORD_AUDIO 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox RECORD_AUDIO 2>/dev/null || true; "
-                + "cmd appops get com.google.android.apps.messaging RECORD_AUDIO 2>/dev/null || true; "
-                + "echo '--- current audio focus stack ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| sed -n '/Audio Focus stack entries/,/Events log: focus commands/p' "
-                + "| tail -n 48 || true; "
-                + "echo '--- recent audio focus history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'MediaFocusControl dump time|requestAudioFocus|abandonAudioFocus|focus owner:|In ring or call|Notify on duck' "
-                + "| tail -n 100 || true; "
-                + "echo '--- audio policy focus and strategies ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
-                + "| head -n 140 || true; "
-                + "echo '--- media sessions ---'; "
-                + "dumpsys media_session 2>/dev/null "
-                + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|android auto|projection|gearhead' "
-                + "| head -n 120 || true; "
-                + "echo '--- Wi-Fi identity ---'; "
-                + "cmd wifi status 2>/dev/null "
-                + "| grep -i -E 'enabled|connected to|WifiInfo|NetworkCapabilities' "
-                + "| cut -c 1-800 || true; "
-                + "echo '--- Bluetooth audio state ---'; "
-                + "dumpsys bluetooth_manager 2>/dev/null "
-                + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
-                + "| head -n 160 || true; "
-                + "echo '--- cmd audio help ---'; cmd audio help 2>/dev/null || cmd audio 2>/dev/null || true; "
-                + "echo '--- dumpsys audio routes ---'; dumpsys audio 2>/dev/null | grep -i -E 'communication|bluetooth|sco|a2dp|route|device' | head -n 120 || true";
-        return run(command, 8000);
+                + "fi; ");
+        }
+
+        // Reuse one coherent snapshot per service instead of dumping audio five times.
+        command.append("AAARP_AUDIO_DUMP=\"$(dumpsys audio 2>/dev/null)\"; ");
+        command.append("AAARP_POLICY_DUMP=\"$(dumpsys media.audio_policy 2>/dev/null)\"; ");
+        String audio = "printf '%s\\n' \"$AAARP_AUDIO_DUMP\"";
+        String policy = "printf '%s\\n' \"$AAARP_POLICY_DUMP\"";
+        appendDiagnosticsSection(command, "audio mode and communication state", audio
+                + " | grep -i -E 'Audio mode|mMode|mBluetoothSco|mScoAudioState|mScoConnectionState|mCommunication|mActiveCommunication|mPreferredCommunication|mBluetoothA2dpEnabled|mA2dpSuspended|mForcedUseForComm|In ring or call'",
+                40, 2200);
+        appendDiagnosticsSection(command, "Bluetooth audio state",
+                "AAARP_BT_DUMP=\"$(dumpsys bluetooth_manager 2>/dev/null)\"; "
+                        + "printf '%s\\n' \"$AAARP_BT_DUMP\""
+                        + " | grep -i -E 'active.*device|device.*active|audiostate|audio state|mSco|mAudioRouteAllowed' | head -n 32; "
+                        + "printf '%s\\n' \"$AAARP_BT_DUMP\""
+                        + " | grep -i -E 'Bluetooth Status|enabled:|Profile:|connectionstate|a2dp|headset|leaudio|le_audio' | head -n 32",
+                64, 3000);
+        appendDiagnosticsSection(command, "recent audio recording history", audio
+                + " | grep -i -E 'rec (start|update|stop).*src:' | tail -n " + (automatic ? 24 : 32),
+                32, 2400);
+        appendDiagnosticsSection(command, "current audio policy input clients", policy
+                + " | sed -n '/^[[:space:]]*Inputs/,/^[[:space:]]*Total Effects/p'",
+                48, 1800);
+        // Android's EventLogger heading varies; the call flag ends the current stack itself.
+        // Keep its beginning so an unrecognized end heading cannot replace owners with tables.
+        appendDiagnosticsSection(command, "current audio focus stack", audio
+                + " | sed -n '/Audio Focus stack entries/,/In ring or call/p'",
+                40, 2400);
+        appendDiagnosticsSection(command, "Android Auto processes",
+                "pidof com.google.android.projection.gearhead 2>/dev/null; "
+                        + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead'",
+                12, 1000);
+        appendDiagnosticsSection(command, "appops audio focus",
+                "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null; "
+                        + "cmd appops get android TAKE_AUDIO_FOCUS 2>/dev/null; "
+                        + "cmd appops get com.android.systemui TAKE_AUDIO_FOCUS 2>/dev/null; "
+                        + "cmd appops get com.google.android.projection.gearhead TAKE_AUDIO_FOCUS 2>/dev/null; "
+                        + "cmd appops get com.google.android.googlequicksearchbox TAKE_AUDIO_FOCUS 2>/dev/null; "
+                        + "cmd appops get com.google.android.apps.messaging TAKE_AUDIO_FOCUS 2>/dev/null",
+                24, 1400);
+        appendDiagnosticsSection(command, "appops microphone access",
+                "cmd appops get com.google.android.projection.gearhead RECORD_AUDIO 2>/dev/null; "
+                        + "cmd appops get com.google.android.googlequicksearchbox RECORD_AUDIO 2>/dev/null; "
+                        + "cmd appops get com.google.android.apps.messaging RECORD_AUDIO 2>/dev/null",
+                16, 800);
+        appendDiagnosticsSection(command, "recent audio focus history", audio
+                + " | grep -i -E 'MediaFocusControl dump time|requestAudioFocus|abandonAudioFocus|focus owner:|In ring or call|Notify on duck'"
+                + " | tail -n " + (automatic ? 40 : 60),
+                60, 3600);
+        appendDiagnosticsSection(command, "Wi-Fi identity", "cmd wifi status 2>/dev/null"
+                + " | grep -i -E 'enabled|connected to|WifiInfo|NetworkCapabilities'",
+                8, 1100);
+        appendDiagnosticsSection(command, "audio policy focus and strategies", policy
+                + " | grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth'",
+                automatic ? 80 : 100, 4000);
+        appendDiagnosticsSection(command, "media sessions", "dumpsys media_session 2>/dev/null"
+                + " | grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|android auto|projection|gearhead'",
+                automatic ? 48 : 64, 2200);
+        if (!automatic) {
+            appendDiagnosticsSection(command, "cmd audio help",
+                    "cmd audio help 2>/dev/null || cmd audio 2>/dev/null", 48, 1600);
+        }
+        return command.toString();
     }
 
-    ShellResult autoLogSnapshot() {
-        // Snapshots use smaller recent-event windows to remain below MAX_OUTPUT_CHARS.
-        String command = "echo '--- auto log snapshot ---'; date; "
-                + "echo '--- recent audio recording history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'rec (start|update|stop).*src:' "
-                + "| tail -n 24 || true; "
-                + "echo '--- current audio policy input clients ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| sed -n '/^[[:space:]]*Inputs/,/^[[:space:]]*Total Effects/p' "
-                + "| head -n 60 || true; "
-                + "echo '--- Android Auto processes ---'; "
-                + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
-                + "echo '--- appops audio focus ---'; "
-                + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "echo '--- appops microphone access ---'; "
-                + "cmd appops get com.google.android.projection.gearhead RECORD_AUDIO 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox RECORD_AUDIO 2>/dev/null || true; "
-                + "echo '--- current audio focus stack ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| sed -n '/Audio Focus stack entries/,/Events log: focus commands/p' "
-                + "| tail -n 36 || true; "
-                + "echo '--- recent audio focus history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'MediaFocusControl dump time|requestAudioFocus|abandonAudioFocus|focus owner:|In ring or call|Notify on duck' "
-                + "| tail -n 80 || true; "
-                + "echo '--- audio policy ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
-                + "| head -n 100 || true; "
-                + "echo '--- media sessions ---'; "
-                + "dumpsys media_session 2>/dev/null "
-                + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|projection|gearhead' "
-                + "| head -n 80 || true; "
-                + "echo '--- Wi-Fi identity ---'; "
-                + "cmd wifi status 2>/dev/null "
-                + "| grep -i -E 'enabled|connected to|WifiInfo|NetworkCapabilities' "
-                + "| cut -c 1-800 || true; "
-                + "echo '--- Bluetooth audio state ---'; "
-                + "dumpsys bluetooth_manager 2>/dev/null "
-                + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
-                + "| head -n 100 || true";
-        return run(command, 10000);
+    private static void appendDiagnosticsSection(StringBuilder command, String label,
+                                                  String source, int maxLines, int maxChars) {
+        command.append("echo '--- ").append(label).append(" ---'; (")
+                .append(source).append(") | cut -c 1-400 | head -n ")
+                .append(maxLines).append(" | head -c ").append(maxChars)
+                .append("; printf '\\n'; ");
     }
 
     ShellResult currentWifiIdentity() {
@@ -223,30 +213,72 @@ final class RootShell {
     }
 
     ShellResult restoreAppAccess(String packageName, Iterable<String> runtimePermissions,
-                                 boolean restoreBatteryExemption) {
+                                 boolean restoreBatteryExemption, int userId) {
+        return run(restoreAppAccessCommand(
+                packageName,
+                runtimePermissions,
+                restoreBatteryExemption,
+                userId
+        ), 10000);
+    }
+
+    static String restoreAppAccessCommand(String packageName,
+                                          Iterable<String> runtimePermissions,
+                                          boolean restoreBatteryExemption,
+                                          int userId) {
         StringBuilder command = new StringBuilder();
         command.append("echo '--- AAARP restoring app access ---'; ");
+        command.append("AAARP_ACCESS_FAILED=0; ");
         command.append("PKG=").append(shellQuote(packageName)).append("; ");
+        command.append("AAARP_USER=").append(userId).append("; ");
         for (String permission : runtimePermissions) {
             if (permission == null || permission.length() == 0) {
                 continue;
             }
-            command.append("echo 'Granting ").append(permission).append("'; ");
-            command.append("pm grant \"$PKG\" ")
-                    .append(shellQuote(permission))
-                    .append(" 2>&1 || pm grant --user 0 \"$PKG\" ")
-                    .append(shellQuote(permission))
-                    .append(" 2>&1 || true; ");
+            command.append("AAARP_PERMISSION=").append(shellQuote(permission)).append("; ");
+            command.append("echo \"Granting $AAARP_PERMISSION\"; ");
+            command.append("if pm grant --user \"$AAARP_USER\" \"$PKG\" ")
+                    .append("\"$AAARP_PERMISSION\" 2>&1; then :; ")
+                    .append("else echo \"ERROR: grant command failed for $AAARP_PERMISSION\"; ")
+                    .append("AAARP_ACCESS_FAILED=1; fi; ");
+            command.append("AAARP_PERMISSION_STATE=\"$(dumpsys package check-permission ")
+                    .append("\"$AAARP_PERMISSION\" \"$PKG\" \"$AAARP_USER\" 2>&1)\"; ");
+            command.append("case \"$AAARP_PERMISSION_STATE\" in ")
+                    .append("0|granted) echo \"VERIFIED: permission $AAARP_PERMISSION\" ;; ")
+                    .append("*) echo \"ERROR: permission not verified: $AAARP_PERMISSION\"; ")
+                    .append("echo \"$AAARP_PERMISSION_STATE\"; AAARP_ACCESS_FAILED=1 ;; esac; ");
             if ("android.permission.POST_NOTIFICATIONS".equals(permission)) {
-                command.append("cmd appops set \"$PKG\" POST_NOTIFICATION allow 2>&1 || true; ");
+                command.append("if cmd appops set --user \"$AAARP_USER\" \"$PKG\" ")
+                        .append("POST_NOTIFICATION allow 2>&1; then :; ")
+                        .append("else echo 'ERROR: POST_NOTIFICATION app-op request failed'; ")
+                        .append("AAARP_ACCESS_FAILED=1; fi; ");
+                command.append("AAARP_POST_MODE=\"$(cmd appops get --user \"$AAARP_USER\" ")
+                        .append("\"$PKG\" ")
+                        .append("POST_NOTIFICATION 2>&1 ")
+                        .append("| sed -n 's/^[[:space:]]*POST_NOTIFICATION:[[:space:]]*\\([^;[:space:]]*\\).*/\\1/p' ")
+                        .append("| head -n 1)\"; ");
+                command.append("case \"$AAARP_POST_MODE\" in ")
+                        .append("allow) echo 'VERIFIED: POST_NOTIFICATION app-op' ;; ")
+                        .append("*) echo 'ERROR: POST_NOTIFICATION app-op not verified'; ")
+                        .append("echo \"mode=$AAARP_POST_MODE\"; AAARP_ACCESS_FAILED=1 ;; esac; ");
             }
         }
         if (restoreBatteryExemption) {
             command.append("echo 'Restoring battery optimization exemption'; ");
-            command.append("cmd deviceidle whitelist +\"$PKG\" 2>&1 ")
-                    .append("|| dumpsys deviceidle whitelist +\"$PKG\" 2>&1 || true; ");
+            command.append("if cmd deviceidle whitelist +\"$PKG\" 2>&1; then :; ")
+                    .append("elif dumpsys deviceidle whitelist +\"$PKG\" 2>&1; then :; ")
+                    .append("else echo 'ERROR: battery exemption request failed'; ")
+                    .append("AAARP_ACCESS_FAILED=1; fi; ");
+            command.append("AAARP_DOZE_STATE=\"$(cmd deviceidle whitelist 2>&1)\"; ");
+            command.append("case \"$AAARP_DOZE_STATE\" in ")
+                    .append("*\"$PKG\"*) echo 'VERIFIED: battery optimization exemption' ;; ")
+                    .append("*) echo 'ERROR: battery optimization exemption not verified'; ")
+                    .append("echo \"$AAARP_DOZE_STATE\"; AAARP_ACCESS_FAILED=1 ;; esac; ");
         }
-        return run(command.toString(), 10000);
+        command.append("if [ \"$AAARP_ACCESS_FAILED\" -eq 0 ]; then ")
+                .append("echo 'AAARP app access restore verified'; exit 0; ")
+                .append("else echo 'AAARP app access restore verification failed'; exit 42; fi");
+        return command.toString();
     }
 
     ShellResult applyAndroidAutoAudioTweaks(boolean routeNotifications, int notificationDevice,
@@ -322,7 +354,7 @@ final class RootShell {
                 .append(variableName).append("\"; ");
     }
 
-    private String shellQuote(String value) {
+    private static String shellQuote(String value) {
         if (value == null || value.length() == 0) {
             return "''";
         }
@@ -348,21 +380,28 @@ final class RootShell {
         throw new IOException(failures.toString(), lastError);
     }
 
-    private static void appendOutputLine(StringBuilder output, String line) {
-        if (output.length() >= MAX_OUTPUT_CHARS) {
-            return;
-        }
-        String value = (line == null ? "" : line) + '\n';
-        int remaining = MAX_OUTPUT_CHARS - output.length();
-        if (value.length() <= remaining) {
-            output.append(value);
-            return;
-        }
-        if (remaining > TRUNCATED_OUTPUT.length()) {
-            output.append(value, 0, remaining - TRUNCATED_OUTPUT.length());
+    static void appendOutputLine(StringBuilder output, String line) {
+        synchronized (output) {
+            String value = (line == null ? "" : line) + '\n';
+            if (value.length() <= MAX_OUTPUT_CHARS - output.length()) {
+                output.append(value);
+                return;
+            }
+            // Overflow can arrive after a line filled the buffer exactly. Make room in the
+            // existing text too, so every truncated result has a complete, explicit marker.
+            int retainedChars = MAX_OUTPUT_CHARS - TRUNCATED_OUTPUT.length();
+            if (output.length() > retainedChars) {
+                output.setLength(retainedChars);
+            }
+            int remaining = retainedChars - output.length();
+            output.append(value, 0, Math.min(value.length(), remaining));
             output.append(TRUNCATED_OUTPUT);
-        } else {
-            output.append(value, 0, remaining);
+        }
+    }
+
+    private static String outputText(StringBuilder output) {
+        synchronized (output) {
+            return output.toString();
         }
     }
 

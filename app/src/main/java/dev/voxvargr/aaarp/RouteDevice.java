@@ -103,8 +103,11 @@ final class RouteDevice {
             case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
                 return 0x80;
             case AudioDeviceInfo.TYPE_BLE_HEADSET:
-            case AudioDeviceInfo.TYPE_BLE_SPEAKER:
                 return 0x20000000;
+            case AudioDeviceInfo.TYPE_BLE_SPEAKER:
+                return 0x20000001;
+            case AudioDeviceInfo.TYPE_BLE_BROADCAST:
+                return 0x20000002;
             default:
                 return 0;
         }

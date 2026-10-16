@@ -15,6 +15,9 @@ public final class BootRestoreReceiver extends BroadcastReceiver {
             return;
         }
 
+        // Package replacement can arrive before the activity ever opens. Run migrations before
+        // consulting the old monitor flag so a behavior-changing release remains review-first.
+        AppPrefs.migrateLoudnessNormalizationSettings(context);
         SharedPreferences prefs = AppPrefs.get(context);
         boolean restoreAfterBoot = prefs.getBoolean(AppPrefs.RESTORE_MONITOR_AFTER_BOOT, true);
         boolean monitorWasRunning = prefs.getBoolean(AppPrefs.MONITOR_ENABLED, false);

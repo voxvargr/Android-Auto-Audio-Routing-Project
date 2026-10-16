@@ -12,6 +12,8 @@ final class TrustPolicy {
     static final String VOLUME_DOWN_PROVIDER_METHOD = "volume_down";
     static final int PHONE_DOCK_FEED = 9;
     static final int RECENT_DOCK_FEED = 10;
+    static final String VOLUME_UP_DOCK_SLOT = "hotseat_three";
+    static final String VOLUME_DOWN_DOCK_SLOT = "hotseat_four";
 
     private TrustPolicy() {
     }
@@ -42,6 +44,16 @@ final class TrustPolicy {
         }
         if (dockFeed == RECENT_DOCK_FEED) {
             return "RECENT";
+        }
+        return null;
+    }
+
+    static String shortcutPackageForDockSlot(String dockSlot) {
+        if (VOLUME_UP_DOCK_SLOT.equals(dockSlot)) {
+            return VOLUME_UP_PACKAGE;
+        }
+        if (VOLUME_DOWN_DOCK_SLOT.equals(dockSlot)) {
+            return VOLUME_DOWN_PACKAGE;
         }
         return null;
     }

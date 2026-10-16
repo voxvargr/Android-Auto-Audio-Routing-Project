@@ -3,7 +3,9 @@ package dev.voxvargr.aaarp;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 final class AppPrefs {
     static final String PREFS = "aaarp_prefs";
@@ -32,9 +34,12 @@ final class AppPrefs {
     static final String MUTE_NOTIFICATIONS_DURING_PLAYBACK_ALWAYS = "mute_notifications_during_playback_always";
     static final String NORMALIZE_MEDIA_DURING_ANDROID_AUTO = "normalize_media_during_android_auto";
     static final String NORMALIZE_MEDIA_ALWAYS = "normalize_media_always";
+    /** Retired: loudness leveling must never take ownership of STREAM_MUSIC. */
     static final String MEDIA_VOLUME_FLOOR_FALLBACK = "media_volume_floor_fallback";
     static final String MEDIA_DYNAMICS_PROCESSING = "media_dynamics_processing";
     static final String MEDIA_LEVELER_MODE = "media_leveler_mode";
+    private static final String LOUDNESS_MIGRATION_VERSION = "loudness_migration_version";
+    private static final int CURRENT_LOUDNESS_MIGRATION_VERSION = 2;
     private static final String LEGACY_MEDIA_RELAY_ENABLED = "media_relay_enabled";
     private static final String LEGACY_PROFILE_MEDIA_RELAY_SUFFIX = "_media_relay_enabled";
 
@@ -46,34 +51,137 @@ final class AppPrefs {
     }
 
     /**
-     * Converts the retired "experimental stronger compressor" checkbox into the newer
-     * leveler mode preference, for the default settings and every saved profile.
+     * Migrates every retired loudness setting, including settings restored from an older
+     * backup. The volume-floor fallback is deliberately deleted: loudness leveling changes
+     * the audio signal, never the user's STREAM_MUSIC setting.
      */
+    static void migrateLoudnessNormalizationSettings(Context context) {
+        applyLoudnessNormalizationMigration(context);
+    }
+
+    /** Compatibility entry point for the monitor while older call sites are upgraded. */
     static void migrateLegacyDynamicsProcessingSettings(Context context) {
+        applyLoudnessNormalizationMigration(context);
+    }
+
+    private static void applyLoudnessNormalizationMigration(Context context) {
         SharedPreferences prefs = get(context);
         Map<String, ?> all = prefs.getAll();
+        Map<String, Object> migrated = new HashMap<>();
+        migrated.putAll(all);
+        migrateLoudnessNormalizationSettings(migrated);
+
         SharedPreferences.Editor editor = null;
-        for (Map.Entry<String, ?> entry : all.entrySet()) {
-            String key = entry.getKey();
-            if (!isLegacyDynamicsProcessingKey(key)) {
-                continue;
+        for (String key : all.keySet()) {
+            if (!migrated.containsKey(key)) {
+                if (editor == null) {
+                    editor = prefs.edit();
+                }
+                editor.remove(key);
             }
-            String modeKey = legacyDynamicsProcessingModeKey(key);
-            if (modeKey == null) {
+        }
+        for (Map.Entry<String, Object> entry : migrated.entrySet()) {
+            if (all.containsKey(entry.getKey())
+                    && Objects.equals(all.get(entry.getKey()), entry.getValue())) {
                 continue;
             }
             if (editor == null) {
                 editor = prefs.edit();
             }
-            if (!all.containsKey(modeKey)) {
-                boolean legacyEnabled = Boolean.TRUE.equals(entry.getValue());
-                editor.putString(modeKey, MediaLevelerProfile.migratedModeFromLegacyFlag(legacyEnabled));
-            }
-            editor.remove(key);
+            putMigratedPreference(editor, entry.getKey(), entry.getValue());
         }
         if (editor != null) {
             editor.apply();
         }
+    }
+
+    /**
+     * Applies every current preference migration to a decoded backup before it is committed.
+     * The input map is mutated deliberately so callers can perform one atomic replacement.
+     */
+    static void migrateRestoredPreferences(Map<String, Object> preferences) {
+        for (String key : new HashMap<>(preferences).keySet()) {
+            if (isLegacyMediaRelayKey(key)) {
+                preferences.remove(key);
+            }
+        }
+        migrateLoudnessNormalizationSettings(preferences);
+    }
+
+    static void migrateLoudnessNormalizationSettings(Map<String, Object> preferences) {
+        Map<String, Object> original = new HashMap<>(preferences);
+        boolean enablePreDriveLeveling = safeMigrationVersion(original)
+                < CURRENT_LOUDNESS_MIGRATION_VERSION;
+        for (Map.Entry<String, Object> entry : original.entrySet()) {
+            String key = entry.getKey();
+            if (enablePreDriveLeveling && Boolean.TRUE.equals(entry.getValue())) {
+                String alwaysKey = matchingAlwaysLevelingKey(key);
+                if (alwaysKey != null) {
+                    preferences.put(alwaysKey, true);
+                }
+            }
+            if (isRetiredMediaVolumeFloorKey(key)) {
+                preferences.remove(key);
+                continue;
+            }
+            if (!isLegacyDynamicsProcessingKey(key)) {
+                continue;
+            }
+            String modeKey = legacyDynamicsProcessingModeKey(key);
+            if (modeKey != null && !original.containsKey(modeKey)) {
+                boolean legacyEnabled = Boolean.TRUE.equals(entry.getValue());
+                preferences.put(
+                        modeKey,
+                        MediaLevelerProfile.migratedModeFromLegacyFlag(legacyEnabled)
+                );
+            }
+            preferences.remove(key);
+        }
+        if (enablePreDriveLeveling) {
+            // Installing this migration replaces the process that owned the old monitor. Keep
+            // the new leveling behavior opt-in until the user reviews it and starts monitoring
+            // again; otherwise a stale true flag can also restart it automatically after boot.
+            preferences.put(MONITOR_ENABLED, false);
+            preferences.put(LOUDNESS_MIGRATION_VERSION, CURRENT_LOUDNESS_MIGRATION_VERSION);
+        }
+    }
+
+    private static int safeMigrationVersion(Map<String, ?> preferences) {
+        Object value = preferences.get(LOUDNESS_MIGRATION_VERSION);
+        return value instanceof Integer ? (Integer) value : 0;
+    }
+
+    private static void putMigratedPreference(SharedPreferences.Editor editor,
+                                              String key,
+                                              Object value) {
+        if (value instanceof String) {
+            editor.putString(key, (String) value);
+        } else if (value instanceof Boolean) {
+            editor.putBoolean(key, (Boolean) value);
+        } else if (value instanceof Integer) {
+            editor.putInt(key, (Integer) value);
+        } else {
+            throw new IllegalStateException("Unsupported migrated preference type for " + key);
+        }
+    }
+
+    /** Maps a global or profile-scoped Android Auto normalization key to its always-on key. */
+    static String matchingAlwaysLevelingKey(String key) {
+        if (NORMALIZE_MEDIA_DURING_ANDROID_AUTO.equals(key)) {
+            return NORMALIZE_MEDIA_ALWAYS;
+        }
+        String suffix = "_" + NORMALIZE_MEDIA_DURING_ANDROID_AUTO;
+        if (key == null || !key.startsWith("profile_") || !key.endsWith(suffix)) {
+            return null;
+        }
+        return key.substring(0, key.length() - suffix.length()) + "_" + NORMALIZE_MEDIA_ALWAYS;
+    }
+
+    static boolean isRetiredMediaVolumeFloorKey(String key) {
+        return MEDIA_VOLUME_FLOOR_FALLBACK.equals(key)
+                || (key != null
+                && key.startsWith("profile_")
+                && key.endsWith("_" + MEDIA_VOLUME_FLOOR_FALLBACK));
     }
 
     static boolean isLegacyDynamicsProcessingKey(String key) {

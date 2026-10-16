@@ -7,16 +7,24 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public final class MediaLevelerProfileTest {
+    private static final String[] LEVELING_MODES = {
+            MediaLevelerProfile.MODE_GENTLE,
+            MediaLevelerProfile.MODE_STRONG,
+            MediaLevelerProfile.MODE_MAX,
+    };
+
     @Test
     public void unknownAndMissingModesFallBackToStrong() {
         assertEquals(MediaLevelerProfile.MODE_STRONG, MediaLevelerProfile.normalizeMode(null));
         assertEquals(MediaLevelerProfile.MODE_STRONG, MediaLevelerProfile.normalizeMode(""));
-        assertEquals(MediaLevelerProfile.MODE_STRONG, MediaLevelerProfile.normalizeMode("nonsense"));
+        assertEquals(MediaLevelerProfile.MODE_STRONG,
+                MediaLevelerProfile.normalizeMode("nonsense"));
     }
 
     @Test
     public void modeParsingIgnoresCaseAndPadding() {
-        assertEquals(MediaLevelerProfile.MODE_GENTLE, MediaLevelerProfile.normalizeMode("  GENTLE "));
+        assertEquals(MediaLevelerProfile.MODE_GENTLE,
+                MediaLevelerProfile.normalizeMode("  GENTLE "));
         assertEquals(MediaLevelerProfile.MODE_OFF, MediaLevelerProfile.normalizeMode("Off"));
     }
 
@@ -26,169 +34,142 @@ public final class MediaLevelerProfileTest {
         assertFalse(profile.anyProcessingEnabled());
         assertFalse(profile.dynamicsEnabled);
         assertEquals(0, profile.loudnessGainMb);
-        assertEquals("leveler=off", profile.summary());
+        assertTrue(profile.summary().contains("streamMusic=user_owned"));
     }
 
     @Test
-    public void gainOnlyModeReproducesLegacyFlatBoost() {
-        MediaLevelerProfile profile = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_GAIN_ONLY);
+    public void gainOnlyModeIsExplicitLegacyBoostNotNormalization() {
+        MediaLevelerProfile profile =
+                MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_GAIN_ONLY);
         assertTrue(profile.anyProcessingEnabled());
         assertFalse(profile.dynamicsEnabled);
         assertEquals(1200, profile.loudnessGainMb);
+        assertEquals(profile.netGainDbAt(-40f), profile.netGainDbAt(-8f), 0.001f);
+        assertEquals(0f, profile.levelingRangeReductionDb(-28f), 0.001f);
     }
 
     @Test
-    public void levelingModesUseSlowReleaseSoTheyRideSongsNotDrumHits() {
-        for (String mode : new String[]{
-                MediaLevelerProfile.MODE_GENTLE,
-                MediaLevelerProfile.MODE_STRONG,
-                MediaLevelerProfile.MODE_MAX}) {
+    public void realLevelingModesUseDynamicsWithoutStackedLoudnessEnhancerGain() {
+        for (String mode : LEVELING_MODES) {
             MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            assertTrue(mode + " should compress", profile.dynamicsEnabled);
-            assertTrue(mode + " release should be slow", profile.mbcReleaseMs >= 400f);
-            assertTrue(mode + " attack should protect transients", profile.mbcAttackMs >= 20f);
+            assertTrue(mode + " should request DynamicsProcessing", profile.dynamicsEnabled);
+            assertEquals(mode + " must not stack LoudnessEnhancer", 0, profile.loudnessGainMb);
         }
     }
 
     @Test
-    public void thresholdsSitAboveQuietMaterialSoOnlyLoudTracksAreCompressed() {
-        // Quiet tracks must pass under the threshold untouched and collect full makeup
-        // gain; the compressor exists to pull LOUD tracks down toward them.
-        for (String mode : new String[]{
-                MediaLevelerProfile.MODE_GENTLE,
-                MediaLevelerProfile.MODE_STRONG,
-                MediaLevelerProfile.MODE_MAX}) {
-            MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            assertTrue(mode + " threshold must sit above quiet material",
-                    profile.mbcThresholdDb > -32f);
-            assertTrue(mode + " threshold must sit below the loudest material",
-                    profile.mbcThresholdDb < MediaLevelerProfile.LOUDEST_RMS_DBFS);
+    public void dynamicsPolicyUsesOnlyOneStereoLinkedLimiter() {
+        assertEquals(2, MediaLevelerProfile.DYNAMICS_CHANNEL_COUNT);
+        assertFalse(MediaLevelerProfile.DYNAMICS_MBC_IN_USE);
+        assertEquals(0, MediaLevelerProfile.DYNAMICS_MBC_BAND_COUNT);
+        assertTrue(MediaLevelerProfile.DYNAMICS_LIMITER_IN_USE);
+        assertEquals(0, MediaLevelerProfile.LIMITER_LINK_GROUP);
+
+        for (String mode : LEVELING_MODES) {
+            assertEquals(MediaLevelerProfile.LIMITER_LINK_GROUP,
+                    MediaLevelerProfile.forMode(mode).limiterLinkGroup);
         }
     }
 
     @Test
-    public void strongerModesLevelHarderThanGentlerOnes() {
+    public void presetsMatchReviewedLimiterOnlyCurves() {
+        assertLimiterCurve(MediaLevelerProfile.MODE_GENTLE, -24f, 4f, 1f, 140f);
+        assertLimiterCurve(MediaLevelerProfile.MODE_STRONG, -28f, 24f, 1f, 100f);
+        assertLimiterCurve(MediaLevelerProfile.MODE_MAX, -34f, 50f, 1f, 100f);
+    }
+
+    private static void assertLimiterCurve(String mode, float thresholdDb, float ratio,
+                                           float attackMs, float releaseMs) {
+        MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
+        assertEquals(thresholdDb, profile.anchorLevelDbFs, 0.001f);
+        assertEquals(thresholdDb, profile.limiterThresholdDb, 0.001f);
+        assertEquals(ratio, profile.limiterRatio, 0.001f);
+        assertEquals(attackMs, profile.limiterAttackMs, 0.001f);
+        assertEquals(releaseMs, profile.limiterReleaseMs, 0.001f);
+        assertEquals(0f, profile.inputGainDb, 0.001f);
+        assertEquals(0f, profile.limiterPostGainDb, 0.001f);
+    }
+
+    @Test
+    public void downwardOnlyCurveNeverAddsSignalGainButDoesNotProvePcmPeaks() {
+        // This checks only the steady-state scalar curve. It is not a PCM, crest-factor,
+        // true-peak, vendor-effect, or listening test.
+        for (String mode : LEVELING_MODES) {
+            MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
+            for (float input = -100f; input <= 0f; input += 0.5f) {
+                assertTrue(mode + " added signal gain at " + input,
+                        profile.netGainDbAt(input) <= 0.001f);
+                assertTrue(mode + " produced an output above its input at " + input,
+                        profile.outputLevelDbAt(input) <= input + 0.001f);
+            }
+            assertEquals(profile.limiterThresholdDb,
+                    profile.outputLevelDbAt(profile.limiterThresholdDb), 0.001f);
+            assertEquals(profile.limiterThresholdDb - 12f,
+                    profile.outputLevelDbAt(profile.limiterThresholdDb - 12f), 0.001f);
+        }
+    }
+
+    @Test
+    public void strongerModesCloseTheRepresentativeGapMoreClosely() {
+        float quietSong = -28f;
         MediaLevelerProfile gentle = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_GENTLE);
         MediaLevelerProfile strong = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_STRONG);
         MediaLevelerProfile max = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_MAX);
 
-        assertTrue(strong.mbcRatio > gentle.mbcRatio);
-        assertTrue(max.mbcRatio > strong.mbcRatio);
-
-        assertTrue(strong.mbcThresholdDb < gentle.mbcThresholdDb);
-        assertTrue(max.mbcThresholdDb < strong.mbcThresholdDb);
-
-        assertTrue(strong.mbcPostGainDb > gentle.mbcPostGainDb);
-        assertTrue(max.mbcPostGainDb > strong.mbcPostGainDb);
-
-        assertTrue(strong.approximateQuietTrackGainDb() > gentle.approximateQuietTrackGainDb());
-        assertTrue(max.approximateQuietTrackGainDb() > strong.approximateQuietTrackGainDb());
+        float gentleGap = gentle.loudReferenceOutputDbFs() - gentle.outputLevelDbAt(quietSong);
+        float strongGap = strong.loudReferenceOutputDbFs() - strong.outputLevelDbAt(quietSong);
+        float maxGap = max.loudReferenceOutputDbFs() - max.outputLevelDbAt(quietSong);
+        assertTrue(strongGap < gentleGap);
+        assertTrue(maxGap < strongGap);
+        assertEquals(8f, gentleGap, 0.01f);
+        assertTrue("strong scalar curve should leave no more than 1 dB",
+                strongGap <= 1.0f);
+        assertTrue("max scalar curve should leave no more than 0.5 dB",
+                maxGap <= 0.5f);
     }
 
     @Test
-    public void limiterKeepsHeadroomBelowFullScaleSoMakeupGainCannotClip() {
-        for (String mode : new String[]{
-                MediaLevelerProfile.MODE_GENTLE,
-                MediaLevelerProfile.MODE_STRONG,
-                MediaLevelerProfile.MODE_MAX}) {
+    public void everyLevelingModeClosesAtLeastHalfOfRepresentativeGap() {
+        for (String mode : LEVELING_MODES) {
             MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            assertTrue(mode + " needs a ceiling below 0 dBFS", profile.limiterThresholdDb < 0f);
-            assertTrue(mode + " limiter must be brickwall-ish", profile.limiterRatio >= 10f);
-            assertTrue(mode + " limiter must catch peaks fast", profile.limiterAttackMs <= 2f);
+            assertTrue(mode + " should close at least half of a 20 dB scalar gap",
+                    profile.levelingRangeReductionDb(-28f) >= 10f);
         }
     }
 
     @Test
-    public void nothingIsEverAttenuatedAcrossTheRealisticLevelRange() {
-        // A downward compressor's net gain decreases as input level rises, so checking
-        // quiet material alone is not enough: sweep from near-silence up to the loudest
-        // RMS real music reaches. (Sustained RMS above that anchor is not physically
-        // reachable by music, and transient peaks above it are the limiter's job.)
-        for (String mode : MediaLevelerProfile.MODE_VALUES) {
+    public void responseRemainsMonotonicWithoutLevelInversion() {
+        for (String mode : LEVELING_MODES) {
             MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            for (float level = -60f; level <= MediaLevelerProfile.LOUDEST_RMS_DBFS; level += 0.5f) {
-                float net = profile.netGainDbAt(level);
-                assertTrue(
-                        mode + " attenuates by " + net + " dB at " + level + " dBFS",
-                        net >= -0.05f
-                );
+            float previousOutput = profile.outputLevelDbAt(-100f);
+            for (float input = -99.5f; input <= 0f; input += 0.5f) {
+                float output = profile.outputLevelDbAt(input);
+                assertTrue(mode + " inverted levels near " + input, output >= previousOutput);
+                previousOutput = output;
             }
         }
     }
 
     @Test
-    public void loudestMaterialLandsNearUnitySoHeadroomIsNotWasted() {
-        for (String mode : new String[]{
-                MediaLevelerProfile.MODE_GENTLE,
-                MediaLevelerProfile.MODE_STRONG,
-                MediaLevelerProfile.MODE_MAX}) {
+    public void scalarReleaseModelApproachesSteadyStateBySevenHundredMilliseconds() {
+        for (String mode : LEVELING_MODES) {
             MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            float loudest = profile.loudestTrackGainDb();
-            assertTrue(mode + " must not turn loud tracks down", loudest >= -0.05f);
-            assertTrue(mode + " wastes headroom on loud tracks (" + loudest + " dB)",
-                    loudest <= 3.0f);
-        }
-    }
-
-    @Test
-    public void quietTracksAreLiftedMuchMoreThanLoudOnes() {
-        for (String mode : new String[]{
-                MediaLevelerProfile.MODE_GENTLE,
-                MediaLevelerProfile.MODE_STRONG,
-                MediaLevelerProfile.MODE_MAX}) {
-            MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            assertTrue(mode + " should lift quiet material far more than loud material",
-                    profile.netGainDbAt(-30f) > profile.netGainDbAt(-6f) + 3f);
-        }
-    }
-
-    @Test
-    public void levelingMeaningfullyClosesTheGapBetweenLoudAndQuietTracks() {
-        float quietTrack = -22f;
-        MediaLevelerProfile gentle = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_GENTLE);
-        MediaLevelerProfile strong = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_STRONG);
-        MediaLevelerProfile max = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_MAX);
-
-        assertTrue("gentle should close at least 5 dB of the gap",
-                gentle.levelingRangeReductionDb(quietTrack) >= 5f);
-        assertTrue(strong.levelingRangeReductionDb(quietTrack)
-                > gentle.levelingRangeReductionDb(quietTrack));
-        assertTrue(max.levelingRangeReductionDb(quietTrack)
-                > strong.levelingRangeReductionDb(quietTrack));
-        assertTrue("max should nearly eliminate a 17 dB gap",
-                max.levelingRangeReductionDb(quietTrack) >= 13f);
-    }
-
-    @Test
-    public void gainOnlyModeCannotLevelBecauseItLiftsEverythingEqually() {
-        MediaLevelerProfile profile = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_GAIN_ONLY);
-        assertEquals(0f, profile.levelingRangeReductionDb(-22f), 0.001f);
-        assertEquals(profile.netGainDbAt(-40f), profile.netGainDbAt(-5f), 0.001f);
-    }
-
-    @Test
-    public void makeupGainIsDerivedFromThresholdAndRatio() {
-        // (loudest - threshold) * (1 - 1/ratio)
-        assertEquals(14.25f, MediaLevelerProfile.derivedMakeupGainDb(-24f, 4f), 0.01f);
-        assertEquals(0f, MediaLevelerProfile.derivedMakeupGainDb(-24f, 1f), 0.001f);
-        for (String mode : new String[]{
-                MediaLevelerProfile.MODE_GENTLE,
-                MediaLevelerProfile.MODE_STRONG,
-                MediaLevelerProfile.MODE_MAX}) {
-            MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            assertEquals(
-                    MediaLevelerProfile.derivedMakeupGainDb(profile.mbcThresholdDb, profile.mbcRatio),
-                    profile.mbcPostGainDb,
-                    0.01f
+            float steadyGap = Math.abs(
+                    profile.loudReferenceOutputDbFs() - profile.outputLevelDbAt(-28f)
             );
+            assertEquals(20f, profile.modeledLoudToQuietGapDbAt(-28f, 0f), 0.01f);
+            assertTrue(mode + " scalar release estimate should settle near steady state",
+                    profile.modeledLoudToQuietGapDbAt(-28f, 700f) <= steadyGap + 0.11f);
+            assertEquals(steadyGap,
+                    profile.modeledLoudToQuietGapDbAt(-28f, 5000f), 0.01f);
         }
     }
 
     @Test
-    public void legacyCheckboxMapsOntoEquivalentModes() {
+    public void everyLegacyNormalizationSettingMigratesToRealLeveling() {
         assertEquals(MediaLevelerProfile.MODE_STRONG,
                 MediaLevelerProfile.migratedModeFromLegacyFlag(true));
-        assertEquals(MediaLevelerProfile.MODE_GAIN_ONLY,
+        assertEquals(MediaLevelerProfile.MODE_STRONG,
                 MediaLevelerProfile.migratedModeFromLegacyFlag(false));
     }
 
@@ -205,25 +186,18 @@ public final class MediaLevelerProfileTest {
     }
 
     @Test
-    public void fallbackGainIsLargerBecauseThereIsNoMakeupGainWithoutCompression() {
-        for (String mode : new String[]{
-                MediaLevelerProfile.MODE_GENTLE,
-                MediaLevelerProfile.MODE_STRONG,
-                MediaLevelerProfile.MODE_MAX}) {
-            MediaLevelerProfile profile = MediaLevelerProfile.forMode(mode);
-            assertTrue(mode + " fallback must exceed the compressed-path gain",
-                    profile.fallbackLoudnessGainMb > profile.loudnessGainMb);
-            assertTrue(mode + " fallback must stay within LoudnessEnhancer sanity limits",
-                    profile.fallbackLoudnessGainMb <= 1500);
-        }
-    }
-
-    @Test
-    public void summaryReportsTheTuningThatMatters() {
+    public void summaryStatesLinkedDownwardProcessorAndUserVolumeOwnership() {
         String summary = MediaLevelerProfile.forMode(MediaLevelerProfile.MODE_STRONG).summary();
         assertTrue(summary.contains("leveler=strong"));
-        assertTrue(summary.contains("thresholdDb="));
-        assertTrue(summary.contains("releaseMs="));
-        assertTrue(summary.contains("makeupDb="));
+        assertTrue(summary.contains("processor=stereo_linked_limiter"));
+        assertTrue(summary.contains("detector=window_rms"));
+        assertTrue(summary.contains("direction=downward_only"));
+        assertTrue(summary.contains("inputGainDb=0.0"));
+        assertTrue(summary.contains("postGainDb=0.0"));
+        assertTrue(summary.contains("linkGroup=0"));
+        assertTrue(summary.contains("mbc=off"));
+        assertTrue(summary.contains("streamMusic=user_owned"));
+        assertFalse(summary.contains("makeup"));
+        assertFalse(summary.contains("ceiling"));
     }
 }

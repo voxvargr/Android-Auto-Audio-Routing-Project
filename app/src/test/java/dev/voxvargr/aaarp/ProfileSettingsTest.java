@@ -48,4 +48,16 @@ public final class ProfileSettingsTest {
                 ProfileSettings.connectionLabelProfilePreferenceKey(connection)
         );
     }
+
+    @Test
+    public void levelerModeUsesAProfileScopedPreferenceKey() {
+        assertEquals(
+                "profile_motorcycle_media_leveler_mode",
+                ProfileSettings.profileKey("motorcycle", AppPrefs.MEDIA_LEVELER_MODE)
+        );
+        assertEquals(
+                "profile_default_media_leveler_mode",
+                ProfileSettings.profileKey(null, AppPrefs.MEDIA_LEVELER_MODE)
+        );
+    }
 }
