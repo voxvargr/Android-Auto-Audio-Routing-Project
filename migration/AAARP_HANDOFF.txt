@@ -1,0 +1,373 @@
+AAARP - CURRENT MIGRATION HANDOFF FOR CODEX
+Prepared 2026-10-28. THIS FRONT SECTION SUPERSEDES THE LOCAL SNAPSHOT APPENDIX.
+
+VERIFIED GITHUB BASELINE
+Repository: https://github.com/voxvargr/Android-Auto-Audio-Routing-Project
+Clone URL: https://github.com/voxvargr/Android-Auto-Audio-Routing-Project.git
+Default branch: main
+Observed main commit: 7a60777503ffcf94e48011dfa6f3d5da1eb01ad2
+Commit dated: 2026-08-19T13:26:47Z
+Subject: updates- added volume control inside AA
+Visibility observed: PUBLIC.
+
+The GitHub repository contains substantially newer code than the local projected
+Documents folder. Use GitHub main as the available baseline. DO NOT copy the old
+local app/src, README or Gradle settings over GitHub main. The local source map,
+review observations and first-agent prompt in the appendix describe only the old
+prototype and are NOT findings about current GitHub main.
+There may still be unpublished newer work on another original checkout/machine;
+this task cannot prove otherwise. A GitHub commit is not proof of the installed
+phone APK's source. Verify actual installed build identity before any replacement.
+
+WHAT WAS ACTUALLY DONE / WHAT IS BLOCKED
+Created this detailed handoff, SHA-256 file inventory, and preserved the existing
+local APK under migration/reference/app-debug.apk. Kept all 89 diagnostic files
+in their existing pulled-aaarp-logs tree. Verified all 113 initial inventory hashes.
+Updated only local .gitignore with reference-APK exception and key exclusions.
+No source implementation was overwritten, built, installed, committed or pushed.
+Local .git is empty/unusable here, so staging and committing are unavailable.
+A fresh clone attempt also failed: getaddrinfo() thread failed to start.
+Desktop copy failed: access denied. The handoff remains in migration/AAARP_HANDOFF.txt.
+These are incomplete migration steps, not completed GitHub/Desktop operations.
+
+CURRENT GITHUB ARCHITECTURE (READ README AND SOURCE IN THE CLONE)
+settings.gradle.kts includes five modules:
+  :app - main AAARP controller/UI/monitor, dev.voxvargr.aaarp
+  :volume-shortcut-common - shared volume helper service/command code
+  :volume-up - Volume + helper APK
+  :volume-down - Volume - helper APK
+  :aa-trust-hook - optional LSPosed/libxposed Android Auto hook APK
+Main app still declares 0.1.0/code 1, compile/target SDK 36 and minSdk 23.
+aa-trust-hook declares 0.5.0/code 5, minSdk 30 and libxposed API 102.0.0.
+The main and hook build files include JUnit 4.13.2; tests exist in the remote tree.
+Do not carry forward the appendix's prototype implication that there are no tests.
+
+Main source now includes ProfileSettings, BluetoothDeviceCatalog/Target,
+AndroidAutoConnection, AutoLogWriter, DiagnosticsFileWriter, LocationWarmup,
+BuildIdentity, SettingsBackup, BootRestoreReceiver, MusicVolumeStepper,
+ManualMediaVolumeTracker, and AndroidAutoVolumeShortcutProvider/Receiver in
+addition to the original controller/activity/service classes. Inspect these first.
+
+Current README describes:
+- Watchdog routes only when Android Auto and preferred Bluetooth target connected.
+- Wi-Fi identity profiles, reboot monitor restore and battery exemption.
+- Optional per-profile GPS warmup with precise/background location permissions.
+- Experimental root media/notification tweaks with cleanup on disconnect/stop.
+- Old AAARP Volume media shell/notification relay removed. Two separate Volume
+  helper APKs issue signature-protected commands to the main app instead.
+- Four debug APKs: app, volume-down, volume-up, aa-trust-hook.
+- Optional hook tested against Android Auto 17.3 substitutes displayed dock slots
+  3/4 with Volume +/-, keeping navigation/media feeds intact. Taps call a short
+  authenticated bridge in the main app, avoiding background-killed helpers.
+- Helpers use a private experimental IoT category declaration, not a Play-ready
+  supported volume-utility category. AA updates can break the version-specific
+  hook. Scope is Android Auto only. Enable module/reboot before testing.
+- Volume changes STREAM_MUSIC, not a head unit's independent amplifier.
+These are repository-documented behaviors, not fresh device validation by this task.
+
+HISTORICAL HANDOFFS ALREADY IN GITHUB
+Read AAARP-DIAGNOSTIC-HANDOFF-20260727.txt and
+AAARP-VOICE-REPLY-HANDOFF-20260811.txt. Their old missing-source warnings, build
+results and device state are historical; evaluate against August 19 code.
+July investigation linked distorted ringing to global +12 dB media boost and
+SCO/A2DP interference during ringing/VoIP. Preserve call/ring protection and
+change only state owned by AAARP. Do not assume all old lint findings remain.
+August voice-reply investigation found Assistant workflow without a demonstrated
+usable capture path; successful Telecom calling did not prove Assistant mic worked.
+Suggested guard yields media pinning during Assistant/guidance plus 12 seconds,
+covering ~8.5-second listening gaps, while preserving call priority and existing
+communication routes. Diagnostics prioritize recording/input/focus evidence and
+include installed APK hash. Confirm whether these are merged and tested today.
+Historical August handoff mentions E:\Android-Auto-Audio-Routing-Project as another
+checkout location. This is a recovery clue, not a verified accessible local path.
+
+FINISH PREPARING THE OWNER'S REPO FOR PUSH
+1. Open the actual newer checkout, preserve uncommitted changes, inspect git status,
+   remote/branch/HEAD/worktrees and compare with verified GitHub main above.
+2. Bring migration/ and pulled-aaarp-logs/ into that newer checkout. Keep the old
+   prototype separate as evidence only; NEVER overlay it onto newer app source.
+3. Preserve any newer local implementation/modules/tests and generated helper
+   inputs not already committed. Record source HEAD, dirty state and APK hashes.
+4. Check the raw diagnostic exports for credentials before publication. They
+   contain private device/network identifiers. This repository is public.
+5. Review git status --short --untracked-files=all and intended ignored files.
+   If keeping the reference APK in Git, add a narrow .gitignore exception for it.
+   Do not copy caches, local SDK settings, keystores, SSH/ADB keys or tokens.
+6. git add the intended new source, migration files and diagnostic tree. Review
+   git diff --cached --stat, git diff --cached --check and actual contents.
+7. Commit locally; leave git push to owner as requested. Record the commit SHA.
+No claim is made that these steps have been completed in this restricted session.
+
+NEW MACHINE PROCEDURE / NEXT AGENT START HERE
+1. Clone the URL above after the owner pushes. Open the clone in Codex and read
+   repo instructions, README, both historical handoffs, and this front section.
+2. Verify branch and migration commit. Do not assume 0.1.0 means same source/APK.
+3. Configure SDK 36, compatible JDK/JBR, JAVA_HOME and local SDK path. Use pinned
+   wrapper/AGP; confirm actual runtime compatibility with gradlew --version.
+4. Run .\gradlew.bat assembleDebug lintDebug testDebugUnitTest --stacktrace
+   Inspect per-module output; NO-SOURCE is not a passed test suite. Record results.
+5. Four APK paths:
+   app/build/outputs/apk/debug/app-debug.apk
+   volume-down/build/outputs/apk/debug/volume-down-debug.apk
+   volume-up/build/outputs/apk/debug/volume-up-debug.apk
+   aa-trust-hook/build/outputs/apk/debug/aa-trust-hook-debug.apk
+6. Build the main app and helper APKs with the SAME new signing identity; signature
+   permissions/bridge checks require compatible certificates. A different key from
+   the old machine is accepted, but mixing old signed helpers with a newly signed
+   main app can break the commands. Inspect exact signature checks in the source.
+7. Back up current app settings with SettingsBackup if supported and preserve its
+   APK before uninstalling anything. New signatures normally require uninstall,
+   which erases private data. Historical XML is not a live complete phone backup.
+8. Reauthorize ADB, runtime/root permissions, precise/background location when
+   warmup is used, battery exemption and LSPosed module scope as applicable.
+   Reboot/restart Android Auto when required by module changes.
+9. Validate media, phone/DIGITS calls, Assistant voice replies/mic, notification
+   effects, profile switching, disconnect/stop cleanup, GPS warmup, and both volume
+   dock taps with screen on/off. Verify no media-session hijack or phantom volume
+   changes. Preserve logs and source/APK hashes for each tested build.
+10. Continue from the latest actual requirement after confirming source provenance.
+
+PROMPT FOR THE NEXT AGENT
+"Read the front section of migration/AAARP_HANDOFF.txt, README, repo instructions
+and historical handoffs. Start from GitHub main or the owner's newer pushed commit,
+not the prototype Documents snapshot. Verify all five modules and signing identity
+compatibility. Preserve current phone APK/settings and uncommitted work. Set up
+SDK/JDK, build/lint/run real tests, record provenance, then validate routing, calls,
+Assistant mic, profiles, GPS and volume/LSPosed behavior. Do not push on my behalf."
+
+==========================================================================
+APPENDIX: OLD LOCAL SNAPSHOT ONLY - NOT CURRENT GITHUB SOURCE DOCUMENTATION
+The text below was prepared before newer GitHub source was discovered. Its
+statements about an unknown GitHub URL and missing newer source are superseded
+by the verified front section. Use its local data inventory and restoration
+cautions; do not use its prototype source map as the current architecture.
+==========================================================================
+AAARP / ANDROID AUDIO ROUTING PROJECT - CODEX MACHINE HANDOFF
+Prepared: 2026-10-28
+
+READ THIS FIRST
+This is an evidence-based handoff of the files accessible in the old workspace.
+It is NOT a certification that the checked-out source matches the latest phone app.
+The current Java source is a small prototype, while saved July/August 2026 phone
+preferences and logs show substantially more functionality. Both report 0.1.0 /
+versionCode 1. Version labels alone cannot distinguish these builds.
+Before installing a freshly built APK on the existing phone, recover the newer
+source from the real Git checkout/history/other worktrees or previous machine.
+Do not overwrite a newer working phone app with this prototype by accident.
+
+MIGRATION STATUS / LIMITS
+- Workspace: C:\Users\VoxVargr Wolfheart\Documents\Android Audio Routing Project
+- Git executable works, but `git rev-parse --show-toplevel` and `git status` fail:
+  fatal: not a git repository. The visible .git directory enumerates as empty.
+- Therefore branch, remote URL, HEAD, tracked state, ignored state, and unpushed
+  commits could not be established. No Git init, commit, push, reset, or replacement
+  of repository metadata was performed. Recover the original checkout metadata.
+- No GitHub URL is asserted here. Obtain it with git remote -v in the actual repo.
+- Source behavior below was inspected directly. No device test or fresh successful
+  build has been established by this handoff. Existing build outputs are evidence,
+  not proof that current source produced them.
+- Desktop copy status is recorded in migration/verification.txt.
+- Existing phone app-private storage is not included in a Git clone. Saved XML and
+  logs are historical exports, not a live full backup of the phone on 2026-10-28.
+
+OWNER INTENT
+Keep all current app source, project data, diagnostics, settings exports, and
+implementation knowledge in the updated GitHub repo for the owner to push.
+Move development to another computer with Codex and allow another agent to take
+over. Different new-machine signing keys are accepted. Prefer FOSS tools; keep
+responses concise and double-check changes. Do not push on the owner's behalf.
+
+PROJECT / BUILD CONFIGURATION OBSERVED
+Name: AAARP (Android Auto Audio Routing Project)
+Application ID / Java namespace: dev.voxvargr.aaarp
+Version name: 0.1.0; version code: 1
+Language/UI: Java, platform Activity/widgets, no AndroidX dependency configured.
+Android Gradle Plugin: 9.2.0 (root build.gradle.kts)
+Gradle wrapper: 9.4.1 (gradle/wrapper/gradle-wrapper.properties)
+compileSdk / targetSdk: 36; minSdk: 23
+Java source/target compatibility: 17 (this is not proof JDK 17 can run this Gradle).
+Use a runtime JDK compatible with the pinned Gradle/AGP, preferably the compatible
+Android Studio bundled JBR, and confirm with gradlew --version. Do not blindly
+change the wrapper/plugin versions just to match an arbitrary installed JDK.
+No release signingConfig or external API-key dependency appears in app build file.
+local.properties points at the old machine's Android SDK and must be recreated.
+Do not commit that machine-specific file, signing keystores, or credentials.
+
+REPOSITORY CONTENT TO PRESERVE
+- app/src/main: AndroidManifest.xml, seven Java source classes, resources.
+- Root/settings/app Gradle scripts, gradle.properties, both wrapper launchers,
+  gradle/wrapper/gradle-wrapper.jar and gradle-wrapper.properties.
+- README.md, .gitignore, migration/ including this handoff and file checksums.
+- Entire pulled-aaarp-logs/ tree, retaining nested folders and timestamps in names.
+- migration/reference/app-debug.apk: preserved existing APK for investigation;
+  its relation to source/latest installed build is UNVERIFIED. Do not auto-install.
+- Reproducible .gradle/, .idea/, build/, app/build/ caches are not source inputs.
+  Existing logs under pulled-aaarp-logs are research data, not disposable build logs.
+- Git history/branches/remotes require the real .git; they cannot be reconstructed
+  from this handoff. Do not replace an existing repo by running git init.
+
+SOURCE MAP / ACTUAL CURRENT IMPLEMENTATION
+MainActivity.java
+  Programmatic UI: Refresh, Apply, Clear, Start/Stop Monitor, Root Check, Diagnostics.
+  Requests BLUETOOTH_CONNECT on API 31+ and POST_NOTIFICATIONS on API 33+.
+  Runs apply/clear/root diagnostics on a single background executor.
+AppPrefs.java
+  SharedPreferences file aaarp_prefs, only three keys in this visible source:
+  selected_device_key, use_root, monitor_enabled.
+AudioRouteController.java
+  API 31+: getAvailableCommunicationDevices/setCommunicationDevice.
+  Older Android: enumerates Bluetooth outputs and requests legacy SCO.
+  Sets MODE_IN_COMMUNICATION; clear restores MODE_NORMAL.
+  Missing selection falls back to first Bluetooth device, then first device.
+  No root enforcement backend is implemented in this visible controller.
+RouteDevice.java
+  Device representation; selection key uses type:id:name. IDs can change across
+  reconnects/devices, so historical selections are not portable identifiers.
+AndroidAutoStatus.java
+  Package presence detection; root pidof check for gearhead. Process presence is
+  not reliable proof an Android Auto projection session is currently connected.
+RootShell.java
+  Executes su -c, limits output and times out. Checks root with id; diagnostics
+  inspect Android Auto PID, cmd audio help, filtered dumpsys audio.
+RoutingMonitorService.java
+  connectedDevice foreground service; reapplies selected route every 5 seconds
+  on main Handler. Sticky service, notification with Stop action.
+  Stop ends the loop; it does not itself clear the route. Clear is separate.
+AndroidManifest.xml
+  Bluetooth/audio/notification/connected-device FGS permissions; package queries
+  for gearhead/GMS; launcher Activity exported, routing service not exported.
+
+LATER BEHAVIOR EVIDENCED BY HISTORICAL DATA (NOT IN THE VISIBLE SOURCE)
+Saved prefs/logs show Wi-Fi connection profiles, Bluetooth target queries,
+watchdog, media pinning, SCO pause during media, route release and Bluetooth
+reset after Android Auto, media normalization, notification ducking suppression,
+notification muting during playback, notification route mode, and GPS warmup.
+The latest inspected export adds gps_warmup_during_android_auto and a profile
+variant. The simple source has none of those settings/implementations.
+Do not claim these features are delivered merely because exported keys exist.
+
+Historical configuration summary (2026-08-03 export, not current phone truth):
+- Active saved profile wifi_eaa5a098, label bike; another profile label CARLINK-CAB662.
+- Bike target is OpenDots 2 by Shokz; default target OpenFit Pro by Shokz;
+  other profile target Jensen Media Player. Exact historical queries/addresses
+  remain in the exported XML. Re-detect devices on new phones.
+- Root/monitor/watchdog enabled; media pinning and normalization enabled;
+  pause SCO for media, release route and reset Bluetooth enabled.
+- Notification route mode off; suppress ducking enabled; mute playback enabled.
+- Normalize-always and dynamics processing disabled. GPS warmup enabled in latest
+  saved export. Consult profile-specific XML rather than assuming global values
+  apply to every profile.
+- Historical dumps identify NX809J; do not infer the owner's current phone from it.
+
+DIAGNOSTIC DATA GUIDE
+pulled-aaarp-logs/ contains dated diagnostics from July 2026, automatic log folders,
+signature-reinstall preference backups/corrections, and wireless-check snapshots:
+  wireless-check-20260730-120239/
+  wireless-check-20260803-101743/
+The August snapshot includes aaarp-prefs.xml, package-aaarp.txt, service/audio/
+Bluetooth/media/Wi-Fi dumps, PID, and nested rotating auto logs through Aug 3.
+Its package dump records an Aug 3 lastUpdateTime with versionCode still 1.
+Keep same-name files in different directories; do not flatten/deduplicate by name.
+Logs/prefs contain personal device/network identifiers and potentially location or
+other diagnostic details. Preserve them for the requested migration; check repo
+visibility and actual credential content before publishing them publicly.
+No new phone backup was taken by this task.
+
+OLD MACHINE ENVIRONMENT OBSERVATIONS
+Old SDK hint: C:\Users\VoxVargr Wolfheart\AppData\Local\Android\Sdk
+Android Studio JBR Java executable and SDK platform-tools/adb.exe paths exist,
+but Java/ADB were not found on the inspected command PATH. Set paths on the new
+machine, not by copying old absolute paths. No agent instruction files were found
+in the enumerated .agents/.codex folders or workspace AGENTS.md search.
+
+OWNER: FINISHING THE GIT SNAPSHOT ON THE ACTUAL CHECKOUT
+1. Open a terminal in the real repo; run git status, git remote -v, git branch -vv,
+   and git log -5 --oneline. Confirm this is the intended existing GitHub repo.
+2. Locate newer implementation before declaring migration complete. Search all
+   branches/worktrees/history for gps_warmup_during_android_auto, active_profile_id,
+   selected_bluetooth_target_key and suppress_notification_ducking.
+   Use git worktree list, git branch -a and git log --all. Preserve current changes.
+3. Review .gitignore and git status --short --untracked-files=all. Include every
+   relevant source/helper/module/test/document and the full diagnostics tree.
+   Do not include caches, local.properties, authentication tokens or keystores.
+4. Review the preserved APK and data; use git add on intended source/data paths.
+   The .gitignore exception permits migration/reference/app-debug.apk.
+   Run git diff --cached --stat, git diff --cached --check and review the diff.
+5. Commit with a descriptive migration message, record the resulting SHA, then
+   owner runs git push to the verified existing branch/remote. Do not force-push.
+6. On new machine, verify the clone has that exact commit and compare checksums
+   against migration/file-inventory.csv for this preserved file snapshot.
+The CSV covers source/build inputs, historical data and preserved reference APK;
+it intentionally excludes caches, machine-local settings, Git metadata and itself.
+
+NEW MACHINE: SETUP AND IMPORT
+1. Install Git, Codex and Android SDK/JDK tooling (Android Studio is convenient;
+   SDK command-line tooling plus a compatible OpenJDK is another option).
+2. Authenticate GitHub locally using the owner's preferred SSH/HTTPS mechanism.
+   Credentials and SSH keys are machine/account state, not app source.
+3. git clone <VERIFIED_REPO_URL>
+   cd <CLONE_FOLDER>
+   git checkout <OWNER_PUSHED_BRANCH>
+   git rev-parse HEAD
+   Confirm it equals the owner-recorded migration commit.
+4. Open that exact folder as a Codex project. Give the next agent this TXT and
+   ask it to read repository instructions and assess the source/data mismatch first.
+5. Install Android SDK platform 36 and required build tools; accept SDK licenses.
+   Configure local.properties sdk.dir for the new SDK or set ANDROID_HOME.
+   Set JAVA_HOME to a JDK compatible with the pinned Gradle and AGP.
+6. Windows: .\gradlew.bat --version
+   Windows: .\gradlew.bat :app:assembleDebug :app:lintDebug
+   Linux/macOS: chmod +x gradlew; ./gradlew :app:assembleDebug :app:lintDebug
+   Wrapper downloads require internet on first use. Record exact JDK and results.
+7. APK output: app/build/outputs/apk/debug/app-debug.apk.
+   Do not confuse that fresh output with migration/reference/app-debug.apk.
+8. Connect phone with USB debugging, approve its new ADB host authorization and
+   verify adb devices. Do not assume old ADB keys or device authorization transfer.
+
+SIGNING / PHONE DATA RESTORATION
+A new debug signing certificate is expected, as accepted by the owner. It does
+not change the application ID. An existing installation with a different signing
+certificate cannot normally be replaced with adb install -r. Do not uninstall it
+until its current preferences/data and APK have been backed up and inspected.
+Uninstalling erases app-private data. Keep the existing working app until newer
+source is recovered and the replacement build has been checked.
+If root is available, collect app-private data with an appropriate rooted backup
+method while the app is stopped; preserve ownership, SELinux context and exact
+package/user paths when restoring. Do not blindly overwrite the newer schema
+with historical XML. Prefer a supported in-app import if recovered code has one.
+Historical preference files in this repo are restoration references, not a promise
+of complete restoration. Root manager grants, Bluetooth pairing, runtime
+permissions, notification access/app-ops and battery settings may need regranting.
+Re-select the intended Bluetooth route; runtime audio device IDs are not stable.
+Never commit private signing/ADB/SSH keys just to simplify migration.
+
+DEVICE VALIDATION AFTER SOURCE RECOVERY / BUILD
+Test stationary with actual Android Auto and intended Bluetooth target:
+- Baseline no projection; connect projection; media; notification; call; mic input;
+  disconnect/reconnect; target absent; route cleanup; monitor Stop versus Clear.
+- Verify heard audio AND recorded/call input, not just an accepted API result.
+- Check notification/foreground-service operation and permission denial paths.
+- Verify profile switching and restoration of system settings for the recovered
+  full implementation. Capture comparable dumps/logs for any failure.
+- Do not interpret API communication-device selection as forcing every other
+  app's media or telephony policy. The visible source does not do that.
+
+VISIBLE CODE REVIEW ITEMS FOR NEXT AGENT (NOT FIXED IN THIS MIGRATION)
+- Legacy SCO path returns RoutingResult success even when off-call SCO unavailable.
+- Route fallback may choose an unintended device if a saved ID disappears.
+- Service runs device/routing calls on main thread and ignores routing failures.
+- Clear/stop/application lifecycle races and uncaught permission/runtime errors
+  deserve validation. APPLY_ONCE currently also starts the repeating loop.
+- Sticky restart ignores the persisted monitor-enabled flag; assess intended policy.
+These observations are source review findings, not reproduced device bugs.
+
+FIRST PROMPT FOR NEXT CODEX AGENT
+"Read migration/AAARP_HANDOFF.txt and repository instructions. Verify branch,
+HEAD and file inventory. First reconcile the prototype source with the later
+phone logs/preferences; recover newer source from Git history/worktrees before
+installing anything. Preserve all diagnostics and existing phone data. Set up the
+local SDK/JDK, build and lint the recovered current app, record exact results,
+then continue Android Auto/Bluetooth routing work based on the latest evidence.
+Do not push, erase phone data, or replace a working installed app without the
+owner's instruction. Different local signing keys are expected."
+

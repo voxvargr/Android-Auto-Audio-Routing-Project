@@ -1,0 +1,4 @@
+TAKE_AUDIO_FOCUS: allow
+TAKE_AUDIO_FOCUS: allow
+No operations.
+Default mode: foreground

@@ -1,0 +1,68 @@
+AAARP diagnostics
+Android Auto installed: yes
+Current communication route: NX809J - Bluetooth SCO - output - 00:00:00:00:00:00
+Watch Android Auto: on
+Restore monitor after reboot: on
+Default Bluetooth target: VoxVargr Buds|OpenFit Pro by Shokz|A0:0C:E2:D1:ED:1F
+Release route after Android Auto disconnects: on
+Auto-stop after Android Auto disconnects: off
+Reset Bluetooth after Android Auto disconnects: on
+Notification route during Android Auto: off
+Try to stop notification ducking: on
+
+Bluetooth inventory
+Adapter: on
+Profiles: HFP/headset=connected, A2DP/media=connected, hearing aid=disconnected, LE audio=disconnected
+Paired devices:
+- A SPEAKER04 - 3B:65:77:CB:86:B6 - class 0x0404
+- F601_DA225A48 - 84:FC:14:44:10:27 - class 0x0420
+- Jensen Media Player - 41:42:A9:2B:4F:94 - class 0x0418
+- T86-CAB6 - 00:5D:60:97:22:DA - class 0x0408
+- VoxVargr Buds / OpenFit Pro by Shokz - A0:0C:E2:D1:ED:1F - class 0x0404
+- VoxVargr OPW3 / OnePlus Watch 3 43mm 00BV - 7C:F0:E5:7E:85:D0 - class 0x0704
+Available AAARP routes:
+- NX809J - Earpiece - output - id 2
+- NX809J - Speaker - output - id 3
+- NX809J - Bluetooth SCO - output - 00:00:00:00:00:00 - id 847
+
+Root diagnostics exit code: 0
+--- id ---
+uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+--- Android Auto processes ---
+u0_a378      30543  2093   17142800 143800 do_epoll_wait       0 S com.google.android.projection.gearhead:shared
+u0_a378      30624  2093   17951316 216016 do_epoll_wait       0 S com.google.android.projection.gearhead:car
+u0_a378      31534  2093   17660012 196524 do_epoll_wait       0 S com.google.android.projection.gearhead:projection
+u0_a378      31626  2093   16963520 130512 do_epoll_wait       0 S com.google.android.projection.gearhead:watchdog
+u0_a378      31966  2093   17002184 132984 do_epoll_wait       0 S com.google.android.projection.gearhead:provider
+--- Wi-Fi identity ---
+Wifi is enabled
+Wifi scanning is only available when wifi is enabled
+==== ClientModeManager instance: ConcreteClientModeManager{id=9990 iface=wlan0 role=ROLE_CLIENT_PRIMARY} ====
+Wifi is connected to "SundekNash"
+WifiInfo: SSID: "SundekNash", BSSID: 30:86:2d:9a:18:b0, MAC: 8e:b8:ff:d5:ac:39, IP: /10.1.10.95, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ac, RSSI: -57, Link speed: 468Mbps, Tx Link speed: 468Mbps, Max Supported Tx Link speed: 866Mbps, Calculated Tx : 207Mbps, Rx Link speed: 585Mbps, Max Supported Rx Link speed: 866Mbps, Calculated Rx : 550Mbps, Frequency: 5180MHz, Net ID: 7, Metered hint: false, score: 51, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"SundekNash"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+successfulTxPackets: 138364
+successfulTxPacketsPerSecond: 2.391311484843703
+retriedTxPackets: 9001
+retriedTxPacketsPerSecond: 1.6844141105094976
+lostTxPackets: 15
+lostTxPacketsPerSecond: 1.7779208138631696E-224
+successfulRxPackets: 242171
+successfulRxPacketsPerSecond: 2.1280540333702485
+NetworkCapabilities: [ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=74133Kbps LinkDnBandwidth>=78052Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: /10.1.10.95, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ac, RSSI: -56, Link speed: 468Mbps, Tx Link speed: 468Mbps, Max Supported Tx Link speed: 866Mbps, Calculated Tx : 326Mbps, Rx Link speed: 585Mbps, Max Supported Rx Link speed: 866Mbps, Calculated Rx : 440Mbps, Frequency: 5180MHz, Net ID: -1, Metered hint: false, score: 51, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -56 AdminUids: [10390] SSID: "SundekNash" UnderlyingNetworks: Null]
+WifiMultiInternetMode 0
+mSecondaryInternet: false
+ rec[83]: time=07-09 08:19:52.702 processed=ConnectingOrConnectedState org=L3ConnectedState dest=<null> what=SUPPLICANT_STATE_CHANGE_EVENT screen=on 0 0 ssid: "SundekNash" bssid: 30:86:2d:9a:18:b0 nid: 7 frequencyMhz: 5180 state: GROUP_HANDSHAKE
+ rec[85]: time=07-09 08:19:52.714 processed=ConnectingOrConnectedState org=L3ConnectedState dest=<null> what=SUPPLICANT_STATE_CHANGE_EVENT screen=on 0 0 ssid: "SundekNash" bssid: 30:86:2d:9a:18:b0 nid: 7 frequencyMhz: 5180 state: COMPLETED
+mIsRestrictedNetworkDebug false
+mWifiInfo SSID: "SundekNash", BSSID: 30:86:2d:9a:18:b0, MAC: 8e:b8:ff:d5:ac:39, IP: /10.1.10.95, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ac, RSSI: -57, Link speed: 468Mbps, Tx Link speed: 468Mbps, Max Supported Tx Link speed: 866Mbps, Calculated Tx : 207Mbps, Rx Link speed: 585Mbps, Max Supported Rx Link speed: 866Mbps, Calculated Rx : 550Mbps, Frequency: 5180MHz, Net ID: 7, Metered hint: false, score: 51, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"SundekNash"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+mLastBssid 30:86:2d:9a:18:b0
+mLastNetworkId 7
+   Local only use-case enabled: false
+   Restricted use-case enabled: false
+   Multi internet use-case enabled: false
+2026-07-08T09:11:20.688900 - WifiService#registerLocalOnlyHotspotSoftApCallback schedule latency 4459 ms
+startTime=7-8 9:11:22.943, SSID="SundekNash", BSSID=30:86:2d:9a:18:b0, durationMillis=1218, roamType=ROAM_UNRELATED, connectionResult=1, level2FailureCode=NONE, connectivityLevelFailureCode=NONE, signalStrength=-57, wifiState=WIFI_DISCONNECTED, screenOn=true, mRouterFingerprint=mConnectionEvent.roamType=0, mChannelInfo=5180, mDtim=0, mAuthentication=2, mHidden=false, mRouterTechnology=5, mSupportsIpv6=false, mEapMethod=0, mAuthPhase2Method=0, mOcspType=0, mPmkCache=false, mMaxSupportedTxLinkSpeedMbps=866, mMaxSupportedRxLinkSpeedMbps=866, mIsFrameworkInitiatedRoaming=false, mIsIncorrectlyConfiguredAsHidden=false, mWifiStandard=5, mIs11bSupported=false, mIsMboSupported=false, mIsOceSupported=false, mIsFilsSupported=false, mIsIndividualTwtSupported=false, mIsBroadcastTwtSupported=false, mIsRestrictedTwtSupported=false, mIsTwtRequired=false, mIs11mcSupported=false, mIs11azSupported=false, mApType6Ghz=AP_TYPE_6GHZ_UNKNOWN, mIsEcpsPriorityAccessSupported=false, mHsRelease=null, mChannelWidth2falsefalsefalsefalse, useRandomizedMac=true, useAggressiveMac=false, connectionNominator=NOMINATOR_SAVED, networkSelectorExperimentId=42330058, numBssidInBlocklist=0, level2FailureReason=FAILURE_REASON_UNKNOWN, networkType=TYPE_WPA2, networkCreator=CREATOR_USER, numConsecutiveConnectionFailure=0, isOsuProvisioned=false interfaceName=wlan0 interfaceRole=ROLE_CLIENT_PRIMARY, isFirstConnectionAfterBoot=true, isCarrierWifi=false, isOobPseudonymEnabled=false, uid=1010
+startTime=7-8 15:18:39.632, SSID="SundekNash", BSSID=30:86:2d:9a:18:b0, durationMillis=421, roamType=ROAM_UNRELATED, connectionResult=1, level2FailureCode=NONE, connectivityLevelFailureCode=NONE, signalStrength=-62, wifiState=WIFI_DISCONNECTED, screenOn=false, mRouterFingerprint=mConnectionEvent.roamType=0, mChannelInfo=5200, mDtim=0, mAuthentication=2, mHidden=false, mRouterTechnology=5, mSupportsIpv6=false, mEapMethod=0, mAuthPhase2Method=0, mOcspType=0, mPmkCache=false, mMaxSupportedTxLinkSpeedMbps=866, mMaxSupportedRxLinkSpeedMbps=866, mIsFrameworkInitiatedRoaming=false, mIsIncorrectlyConfiguredAsHidden=false, mWifiStandard=5, mIs11bSupported=false, mIsMboSupported=false, mIsOceSupported=false, mIsFilsSupported=false, mIsIndividualTwtSupported=false, mIsBroadcastTwtSupported=false, mIsRestrictedTwtSupported=false, mIsTwtRequired=false, mIs11mcSupported=false, mIs11azSupported=false, mApType6Ghz=AP_TYPE_6GHZ_UNKNOWN, mIsEcpsPriorityAccessSupported=false, mHsRelease=null, mChannelWidth2falsefalsefalsefalse, useRandomizedMac=true, useAggressiveMac=false, connectionNominator=NOMINATOR_SAVED, networkSelectorExperimentId=42330058, numBssidInBlocklist=0, level2FailureReason=FAILURE_REASON_UNKNOWN, networkType=TYPE_WPA2, networkCreator=CREATOR_USER, numConsecutiveConnectionFailure=0, isOsuProvisioned=false interfaceName=wlan0 interfaceRole=ROLE_CLIENT_PRIMARY, isFirstConnectionAfterBoot=false, isCarrierWifi=false, isOobPseudonymEnabled=false, uid=1010
+startTime=7-8 15:23:21.93, SSID="CARLINK-CAB662", BSSID=68:8f:c9:8d:f8:ab, durationMillis=2423, roamType=ROAM_UNRELATED, connectionResult=1, level2FailureCode=NONE, connectivityLevelFailureCode=NONE, signalStrength=-29, wifiState=WIFI_DISCONNECTED, screenOn=true, mRouterFingerprint=mConnectionEvent.roamType=0, mChannelInfo=5180, mDtim=1, mAuthentication=2, mHidden=false, mRouterTechnology=4, mSupportsIpv6=false, mEapMethod=0, mAuthPhase2Method=0, mOcspType=0, mPmkCache=false, mMaxSupportedTxLinkSpeedMbps=72, mMaxSupportedRxLinkSpeedMbps=72, mIsFrameworkInitiatedRoaming=false, mIsIncorrectlyConfiguredAsHidden=false, mWifiStandard=4, mIs11bSupported=false, mIsMboSupported=false, mIsOceSupported=false, mIsFilsSupported=false, mIsIndividualTwtSupported=false, mIsBroadcastTwtSupported=false, mIsRestrictedTwtSupported=false, mIsTwtRequired=false, mIs11mcSupported=false, mIs11azSupported=false, mApType6Ghz=AP_TYPE_6GHZ_UNKNOWN, mIsEcpsPriorityAccessSupported=false, mHsRelease=null, mChannelWidth0falsefalsefalsefalse, useRandomizedMac=true, useAggressiveMac=false, connectionNominator=NOMINATOR_SPECIFIER, networkSelectorExperimentId=42330058, numBssidInBlocklist=0, level2FailureReason=FAILURE_REASON_UNKNOWN, networkType=TYPE_WPA2, networkCreator=CREATOR_USER, numConsecutiveConnectionFailure=0, isOsuProvisioned=false interfaceName=wlan0 interfaceRole=ROLE_CLIENT_PRIMARY, isFirstConnectionAfterBoot=false, isCarrierWifi=false, isOobPseudonymEnabled=false, uid=10378
+startTime=7-8 17:10:29.468, SSID="CARLINK-CAB662", BSSID=68:8f:c9:8d:f8:ab, durationMillis=302, roamType=ROAM_UNRELATED, connectionResult=1, level2FailureCode=NONE, connectivityLevelFailureCode=NONE, signalStrength=-21, wifiState=WIFI_DISCONNECTED, screenOn=true, mRouterFingerprint=mConnectionEvent.roamType=0, mChannelInfo=5180, mDtim=1, mAuthentication=2, mHidden=false, mRouterTechnology=4, mSupportsIpv6=false, mEapMethod=0, mAuthPhase2Method=0, mOcspType=0, mPmkCache=false, mMaxSupportedTxLinkSpeedMbps=72, mMaxSupportedRxLinkSpeedMbps=72, mIsFrameworkInitiatedRoaming=false, mIsIncorrectlyConfiguredAsHidden=false, mWifiStandard=4, mIs11bSupported=false, mIsMboSupported=false, mIsOceSupported=false, mIsFilsSupported=false, mIsIndividualTwtSupported=false, mIsBroadcastTwtSupported=false, mIsRestrictedTwtSupported=false, mIsTwtRequired=false, mIs11mcSupported=false, mIs11azSupported=false, mApType6Ghz=AP_TYPE_6GHZ_UNKNOWN, mIsEcpsPriorityAccessSupported=false, mHsRelease=null, mChannelWidth0falsefalsefalsefalse, useRandomizedMac=true, useAggressiveMac=false, connectionNominator=NOMINATOR_SPECIFIER, networkSelectorExperimentId=42330058, numBssidInBlocklist=0, level2FailureReason=FAILURE_REASON_UNKNOWN, networkType=TYPE_WPA2, networkCreator=CREATOR_USER, numConsecutiveConnectionFailure=0, isOsuProvisioned=false interfaceName=wlan0 interfaceRole=ROLE_CLIENT_PRIMARY, isFirstConnectionAfterBoot=false, isCarrierWifi=false, isOobPseudonymEnabled=false, uid=10378
+startTime=7-8 17:49:16.577, SSID="hemi_gear_mesh", BSSID=60:db:98:06:8a:29, durationMillis=4568, roamType=ROAM_UNRELATED, connectionResult=1, level2FailureCode=NONE, connectivityLevelFailureCode=NONE, signalStrength=-60, wifiState=WIFI_DISCONNECTED, screenOn=true, mRouterFingerprint=mConnectionEvent.roamType=0, mChannelInfo=2437, mDtim=0, mAuthentication=2, mHidden=false, mRouterTechnology=7, mSupportsIpv6=false, mEapMethod=0, mAuthPhase2Method=0, mOcspType=0, mPmkCache=false, mMaxSupportedTxLinkSpeedMbps=286, mMaxSupportedRxLinkSpeedMbps=286, mIsFrameworkInitiatedRoaming=false, mIsIncorrectlyConfiguredAsHidden=false, mWifiStandard=6, mIs11bSupported=false, mIsMboSupported=false, mIsOceSupported=false, mIsFilsSupported=false, mIsIndividualTwtSupported=true, mIsBroadcastTwtSupported=false, mIsRestrictedTwtSupported=false, mIsTwtRequired=false, mIs11mcSupported=false, mIs11azSupported=false, mApType6Ghz=AP_TYPE_6GHZ_UNKNOWN, mIsEcpsPriorityAccessSupported=false, mHsRelease=null, mChannelWidth0falsefalsefalsetrue, useRandomizedMac=true, useAggressiveMac=false, connectionNominator=NOMINATOR_SAVED, networkSelectorExperimentId=42330058, numBssidInBlocklist=0, level2FailureReason=FAILURE_REASON_UNKNOWN, networkType=TYPE_WPA2, networkCreator=CREATOR_USER, numConsecutiveConnectionFailure=0, isOsuProvisioned=false interfaceName=wlan0 interfaceRole=ROLE_CLIENT_PRIMARY, isFirstConnectionAfterBoot=false, isCarrierWifi=false, isOobPseudonymEnabled=false, uid=1010

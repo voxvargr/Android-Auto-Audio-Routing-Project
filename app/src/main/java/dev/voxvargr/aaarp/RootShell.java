@@ -1,7 +1,5 @@
 package dev.voxvargr.aaarp;
 
-import android.media.AudioManager;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -10,17 +8,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 final class RootShell {
-    private static final int MAX_OUTPUT_CHARS = 32000;
-    private static final String TRUNCATED_OUTPUT = "\n[AAARP diagnostics truncated]\n";
-    private static final long MUSIC_VOLUME_ADJUST_TIMEOUT_MS = 2000L;
-    private static final String[] SU_CANDIDATES = {
-            "su",
-            "/system/bin/su",
-            "/system/xbin/su",
-            "/sbin/su",
-            "/debug_ramdisk/su",
-            "/vendor/bin/su"
-    };
+    private static final int MAX_OUTPUT_CHARS = 12000;
 
     ShellResult run(String command, long timeoutMs) {
         StringBuilder output = new StringBuilder();
@@ -29,7 +17,9 @@ final class RootShell {
         Process process;
 
         try {
-            process = startSuProcess(command);
+            process = new ProcessBuilder("su", "-c", command)
+                    .redirectErrorStream(true)
+                    .start();
         } catch (IOException e) {
             return ShellResult.failure("Unable to start su: " + e.getMessage());
         }
@@ -38,14 +28,16 @@ final class RootShell {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    appendOutputLine(output, line);
+                    if (output.length() < MAX_OUTPUT_CHARS) {
+                        output.append(line).append('\n');
+                    }
                 }
                 exitCode.set(process.waitFor());
             } catch (IOException e) {
-                appendOutputLine(output, "I/O error: " + e.getMessage());
+                output.append("I/O error: ").append(e.getMessage()).append('\n');
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                appendOutputLine(output, "Interrupted.");
+                output.append("Interrupted.\n");
             } finally {
                 done.countDown();
             }
@@ -55,14 +47,12 @@ final class RootShell {
         try {
             if (!done.await(timeoutMs, TimeUnit.MILLISECONDS)) {
                 process.destroy();
-                appendOutputLine(output, "Timed out.");
-                return new ShellResult(false, -1, output.toString());
+                return new ShellResult(false, -1, output.append("Timed out.\n").toString());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             process.destroy();
-            appendOutputLine(output, "Interrupted.");
-            return new ShellResult(false, -1, output.toString());
+            return new ShellResult(false, -1, output.append("Interrupted.\n").toString());
         }
 
         int code = exitCode.get();
@@ -74,296 +64,12 @@ final class RootShell {
         return result.success && result.output.contains("uid=0");
     }
 
-    ShellResult adjustMusicVolume(int direction) {
-        String command = musicVolumeAdjustmentCommand(direction);
-        if (command == null) {
-            return ShellResult.failure("Invalid music-volume direction: " + direction);
-        }
-        return run(command, MUSIC_VOLUME_ADJUST_TIMEOUT_MS);
-    }
-
-    static String musicVolumeAdjustmentCommand(int direction) {
-        if (direction == AudioManager.ADJUST_LOWER) {
-            return "cmd media_session volume --stream 3 --adj lower";
-        }
-        if (direction == AudioManager.ADJUST_RAISE) {
-            return "cmd media_session volume --stream 3 --adj raise";
-        }
-        return null;
-    }
-
     ShellResult diagnostics() {
-        // Keep recording/input evidence ahead of broad dumps so it survives MAX_OUTPUT_CHARS.
         String command = "echo '--- id ---'; id; "
-                + "echo '--- installed AAARP identity ---'; "
-                + "dumpsys package dev.voxvargr.aaarp 2>/dev/null "
-                + "| grep -E 'versionCode=|versionName=|firstInstallTime=|lastUpdateTime=' "
-                + "| head -n 4 || true; "
-                + "AAARP_APK=\"$(pm path dev.voxvargr.aaarp 2>/dev/null "
-                + "| sed -n 's/^package://p' | head -n 1)\"; "
-                + "echo \"baseApk=$AAARP_APK\"; "
-                + "if [ -n \"$AAARP_APK\" ]; then "
-                + "echo 'base APK SHA-256:'; "
-                + "sha256sum \"$AAARP_APK\" 2>/dev/null "
-                + "|| toybox sha256sum \"$AAARP_APK\" 2>/dev/null "
-                + "|| echo 'unavailable'; "
-                + "fi; "
-                + "echo '--- recent audio recording history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'rec (start|update|stop).*src:' "
-                + "| tail -n 32 || true; "
-                + "echo '--- current audio policy input clients ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| sed -n '/^[[:space:]]*Inputs/,/^[[:space:]]*Total Effects/p' "
-                + "| head -n 80 || true; "
-                + "echo '--- Android Auto processes ---'; "
-                + "pidof com.google.android.projection.gearhead 2>/dev/null || true; "
-                + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
-                + "echo '--- appops audio focus ---'; "
-                + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get android TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.android.systemui TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.projection.gearhead TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.apps.messaging TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "echo '--- appops microphone access ---'; "
-                + "cmd appops get com.google.android.projection.gearhead RECORD_AUDIO 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox RECORD_AUDIO 2>/dev/null || true; "
-                + "cmd appops get com.google.android.apps.messaging RECORD_AUDIO 2>/dev/null || true; "
-                + "echo '--- current audio focus stack ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| sed -n '/Audio Focus stack entries/,/Events log: focus commands/p' "
-                + "| tail -n 48 || true; "
-                + "echo '--- recent audio focus history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'MediaFocusControl dump time|requestAudioFocus|abandonAudioFocus|focus owner:|In ring or call|Notify on duck' "
-                + "| tail -n 100 || true; "
-                + "echo '--- audio policy focus and strategies ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
-                + "| head -n 140 || true; "
-                + "echo '--- media sessions ---'; "
-                + "dumpsys media_session 2>/dev/null "
-                + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|android auto|projection|gearhead' "
-                + "| head -n 120 || true; "
-                + "echo '--- Wi-Fi identity ---'; "
-                + "cmd wifi status 2>/dev/null "
-                + "| grep -i -E 'enabled|connected to|WifiInfo|NetworkCapabilities' "
-                + "| cut -c 1-800 || true; "
-                + "echo '--- Bluetooth audio state ---'; "
-                + "dumpsys bluetooth_manager 2>/dev/null "
-                + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
-                + "| head -n 160 || true; "
+                + "echo '--- Android Auto PID ---'; pidof com.google.android.projection.gearhead 2>/dev/null || true; "
                 + "echo '--- cmd audio help ---'; cmd audio help 2>/dev/null || cmd audio 2>/dev/null || true; "
                 + "echo '--- dumpsys audio routes ---'; dumpsys audio 2>/dev/null | grep -i -E 'communication|bluetooth|sco|a2dp|route|device' | head -n 120 || true";
         return run(command, 8000);
-    }
-
-    ShellResult autoLogSnapshot() {
-        // Snapshots use smaller recent-event windows to remain below MAX_OUTPUT_CHARS.
-        String command = "echo '--- auto log snapshot ---'; date; "
-                + "echo '--- recent audio recording history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'rec (start|update|stop).*src:' "
-                + "| tail -n 24 || true; "
-                + "echo '--- current audio policy input clients ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| sed -n '/^[[:space:]]*Inputs/,/^[[:space:]]*Total Effects/p' "
-                + "| head -n 60 || true; "
-                + "echo '--- Android Auto processes ---'; "
-                + "ps -A 2>/dev/null | grep -F 'com.google.android.projection.gearhead' || true; "
-                + "echo '--- appops audio focus ---'; "
-                + "cmd appops query-op TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox TAKE_AUDIO_FOCUS 2>/dev/null || true; "
-                + "echo '--- appops microphone access ---'; "
-                + "cmd appops get com.google.android.projection.gearhead RECORD_AUDIO 2>/dev/null || true; "
-                + "cmd appops get com.google.android.googlequicksearchbox RECORD_AUDIO 2>/dev/null || true; "
-                + "echo '--- current audio focus stack ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| sed -n '/Audio Focus stack entries/,/Events log: focus commands/p' "
-                + "| tail -n 36 || true; "
-                + "echo '--- recent audio focus history ---'; "
-                + "dumpsys audio 2>/dev/null "
-                + "| grep -i -E 'MediaFocusControl dump time|requestAudioFocus|abandonAudioFocus|focus owner:|In ring or call|Notify on duck' "
-                + "| tail -n 80 || true; "
-                + "echo '--- audio policy ---'; "
-                + "dumpsys media.audio_policy 2>/dev/null "
-                + "| grep -i -E 'focus|duck|attenuat|strategy|sonification|notification|music|product|preferred|device|a2dp|sco|bluetooth' "
-                + "| head -n 100 || true; "
-                + "echo '--- media sessions ---'; "
-                + "dumpsys media_session 2>/dev/null "
-                + "| grep -i -E 'session|package|state|playback|active|volume|duck|focus|bluetooth|a2dp|projection|gearhead' "
-                + "| head -n 80 || true; "
-                + "echo '--- Wi-Fi identity ---'; "
-                + "cmd wifi status 2>/dev/null "
-                + "| grep -i -E 'enabled|connected to|WifiInfo|NetworkCapabilities' "
-                + "| cut -c 1-800 || true; "
-                + "echo '--- Bluetooth audio state ---'; "
-                + "dumpsys bluetooth_manager 2>/dev/null "
-                + "| grep -i -E 'a2dp|headset|avrcp|connected|active|audio|sco|sink|source|device' "
-                + "| head -n 100 || true";
-        return run(command, 10000);
-    }
-
-    ShellResult currentWifiIdentity() {
-        String command = "echo '--- cmd wifi status ---'; cmd wifi status 2>/dev/null || true; "
-                + "echo '--- dumpsys wifi connection ---'; dumpsys wifi 2>/dev/null "
-                + "| grep -i -E 'SSID|BSSID|WifiInfo|mWifiInfo|networkId|ephemeral|specifier|local.?only|validated|internet|restricted|trusted' "
-                + "| head -n 80 || true";
-        return run(command, 5000);
-    }
-
-    ShellResult resetBluetooth() {
-        String command = "echo 'AAARP Bluetooth reset starting'; "
-                + "svc bluetooth disable; "
-                + "sleep 2; "
-                + "svc bluetooth enable; "
-                + "echo 'AAARP Bluetooth reset requested'";
-        return run(command, 10000);
-    }
-
-    ShellResult restoreAppAccess(String packageName, Iterable<String> runtimePermissions,
-                                 boolean restoreBatteryExemption) {
-        StringBuilder command = new StringBuilder();
-        command.append("echo '--- AAARP restoring app access ---'; ");
-        command.append("PKG=").append(shellQuote(packageName)).append("; ");
-        for (String permission : runtimePermissions) {
-            if (permission == null || permission.length() == 0) {
-                continue;
-            }
-            command.append("echo 'Granting ").append(permission).append("'; ");
-            command.append("pm grant \"$PKG\" ")
-                    .append(shellQuote(permission))
-                    .append(" 2>&1 || pm grant --user 0 \"$PKG\" ")
-                    .append(shellQuote(permission))
-                    .append(" 2>&1 || true; ");
-            if ("android.permission.POST_NOTIFICATIONS".equals(permission)) {
-                command.append("cmd appops set \"$PKG\" POST_NOTIFICATION allow 2>&1 || true; ");
-            }
-        }
-        if (restoreBatteryExemption) {
-            command.append("echo 'Restoring battery optimization exemption'; ");
-            command.append("cmd deviceidle whitelist +\"$PKG\" 2>&1 ")
-                    .append("|| dumpsys deviceidle whitelist +\"$PKG\" 2>&1 || true; ");
-        }
-        return run(command.toString(), 10000);
-    }
-
-    ShellResult applyAndroidAutoAudioTweaks(boolean routeNotifications, int notificationDevice,
-                                            String notificationAddress, boolean suppressDucking,
-                                            boolean routeMedia, int mediaDevice, String mediaAddress) {
-        StringBuilder command = new StringBuilder();
-        command.append("echo '--- AAARP Android Auto audio tweaks ---'; ");
-        if (routeNotifications) {
-            appendStrategyIds(command, "AAARP_NOTIFICATION_STRATEGY_IDS", "SONIFICATION", "5", "Notification");
-            command.append("echo 'Notification route device: ").append(notificationDevice).append("'; ");
-            command.append("for ID in $AAARP_NOTIFICATION_STRATEGY_IDS; do ");
-            command.append("cmd audio set-device-role-for-strategy \"$ID\" 1 ")
-                    .append(notificationDevice)
-                    .append(" ")
-                    .append(shellQuote(notificationAddress))
-                    .append(" 2>&1 || true; ");
-            command.append("done; ");
-        }
-        if (routeMedia) {
-            appendStrategyIds(command, "AAARP_MEDIA_STRATEGY_IDS", "STRATEGY_MEDIA", "5", "Media");
-            command.append("echo 'Media route device: ").append(mediaDevice).append("'; ");
-            command.append("for ID in $AAARP_MEDIA_STRATEGY_IDS; do ");
-            command.append("cmd audio set-device-role-for-strategy \"$ID\" 1 ")
-                    .append(mediaDevice)
-                    .append(" ")
-                    .append(shellQuote(mediaAddress))
-                    .append(" 2>&1 || true; ");
-            command.append("done; ");
-            command.append("echo 'Blocking Android Auto audio focus while media pin is active'; ");
-            command.append("cmd appops set com.google.android.projection.gearhead TAKE_AUDIO_FOCUS ignore 2>&1 || true; ");
-        }
-        if (suppressDucking) {
-            command.append("echo 'Suppressing SystemUI audio focus while Android Auto is active'; ");
-            command.append("cmd appops set com.android.systemui TAKE_AUDIO_FOCUS ignore 2>&1 || true; ");
-        }
-        return run(command.toString(), 8000);
-    }
-
-    ShellResult clearAndroidAutoAudioTweaks(boolean restoreDucking, boolean clearNotificationRoute,
-                                            boolean clearMediaRoute) {
-        StringBuilder command = new StringBuilder();
-        command.append("echo '--- AAARP clearing Android Auto audio tweaks ---'; ");
-        if (clearNotificationRoute) {
-            appendStrategyIds(command, "AAARP_NOTIFICATION_STRATEGY_IDS", "SONIFICATION", "5", "Notification");
-            command.append("for ID in $AAARP_NOTIFICATION_STRATEGY_IDS; do ");
-            command.append("cmd audio clear-device-role-for-strategy \"$ID\" 1 2>&1 || true; ");
-            command.append("done; ");
-        }
-        if (clearMediaRoute) {
-            appendStrategyIds(command, "AAARP_MEDIA_STRATEGY_IDS", "STRATEGY_MEDIA", "5", "Media");
-            command.append("for ID in $AAARP_MEDIA_STRATEGY_IDS; do ");
-            command.append("cmd audio clear-device-role-for-strategy \"$ID\" 1 2>&1 || true; ");
-            command.append("done; ");
-            command.append("cmd appops set com.google.android.projection.gearhead TAKE_AUDIO_FOCUS allow 2>&1 || true; ");
-        }
-        if (restoreDucking) {
-            command.append("cmd appops set com.android.systemui TAKE_AUDIO_FOCUS allow 2>&1 || true; ");
-        }
-        return run(command.toString(), 8000);
-    }
-
-    private void appendStrategyIds(StringBuilder command, String variableName, String grepPattern,
-                                   String fallbackId, String label) {
-        command.append(variableName).append("=\"$(dumpsys media.audio_policy 2>/dev/null ")
-                .append("| grep -i ")
-                .append(shellQuote(grepPattern))
-                .append(" ")
-                .append("| sed -n 's/.*id[:= ]*\\([0-9][0-9]*\\).*/\\1/p' ")
-                .append("| tr '\\n' ' ')\"; ");
-        command.append("[ -n \"$").append(variableName).append("\" ] || ")
-                .append(variableName).append("=\"").append(fallbackId).append("\"; ");
-        command.append("echo \"").append(label).append(" strategy ids: $")
-                .append(variableName).append("\"; ");
-    }
-
-    private String shellQuote(String value) {
-        if (value == null || value.length() == 0) {
-            return "''";
-        }
-        return "'" + value.replace("'", "'\\''") + "'";
-    }
-
-    private Process startSuProcess(String command) throws IOException {
-        IOException lastError = null;
-        StringBuilder failures = new StringBuilder();
-        for (String suPath : SU_CANDIDATES) {
-            try {
-                return new ProcessBuilder(suPath, "-c", command)
-                        .redirectErrorStream(true)
-                        .start();
-            } catch (IOException e) {
-                lastError = e;
-                if (failures.length() > 0) {
-                    failures.append("; ");
-                }
-                failures.append(suPath).append(": ").append(e.getMessage());
-            }
-        }
-        throw new IOException(failures.toString(), lastError);
-    }
-
-    private static void appendOutputLine(StringBuilder output, String line) {
-        if (output.length() >= MAX_OUTPUT_CHARS) {
-            return;
-        }
-        String value = (line == null ? "" : line) + '\n';
-        int remaining = MAX_OUTPUT_CHARS - output.length();
-        if (value.length() <= remaining) {
-            output.append(value);
-            return;
-        }
-        if (remaining > TRUNCATED_OUTPUT.length()) {
-            output.append(value, 0, remaining - TRUNCATED_OUTPUT.length());
-            output.append(TRUNCATED_OUTPUT);
-        } else {
-            output.append(value, 0, remaining);
-        }
     }
 
     static final class ShellResult {

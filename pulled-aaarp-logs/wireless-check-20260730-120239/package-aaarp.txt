@@ -1,0 +1,251 @@
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        803c6d1 dev.voxvargr.aaarp/.MainActivity filter 6d58536
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+
+Receiver Resolver Table:
+  Non-Data Actions:
+      android.intent.action.BOOT_COMPLETED:
+        5445c37 dev.voxvargr.aaarp/.BootRestoreReceiver filter bbe35a4
+          Action: "android.intent.action.BOOT_COMPLETED"
+          Action: "android.intent.action.MY_PACKAGE_REPLACED"
+      android.intent.action.MY_PACKAGE_REPLACED:
+        5445c37 dev.voxvargr.aaarp/.BootRestoreReceiver filter bbe35a4
+          Action: "android.intent.action.BOOT_COMPLETED"
+          Action: "android.intent.action.MY_PACKAGE_REPLACED"
+
+Domain verification status:
+
+Key Set Manager:
+  [dev.voxvargr.aaarp]
+      Signing KeySets: 400
+
+Packages:
+  Package [dev.voxvargr.aaarp] (9342c4d):
+    appId=10834
+    pkg=Package{6f4f899 dev.voxvargr.aaarp}
+    codePath=/data/app/~~gjV0_PenzcIOrlM7n_RuuA==/dev.voxvargr.aaarp-nCkcvjTJyWv5oe1I_ddg1w==
+    resourcePath=/data/app/~~gjV0_PenzcIOrlM7n_RuuA==/dev.voxvargr.aaarp-nCkcvjTJyWv5oe1I_ddg1w==
+    legacyNativeLibraryDir=/data/app/~~gjV0_PenzcIOrlM7n_RuuA==/dev.voxvargr.aaarp-nCkcvjTJyWv5oe1I_ddg1w==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=null
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=1 minSdk=23 targetSdk=36
+    minExtensionVersions=[]
+    versionName=0.1.0
+    hiddenApiEnforcementPolicy=2
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    pageSizeCompat=0
+    queriesPackages=[com.google.android.projection.gearhead, com.google.android.gms]
+    scannedAsStoppedSystemApp=false
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2026-07-27 18:06:58
+    lastUpdateTime=2026-07-27 18:07:04
+    installerPackageName=com.google.android.packageinstaller
+    installerPackageUid=10285
+    initiatingPackageName=com.google.android.packageinstaller
+    originatingPackageName=com.mixplorer.beta
+    packageSource=3
+    appMetadataFilePath=null
+    appMetadataSource=0
+    signatures=PackageSignatures{962a75e version:2, signatures:[97e4d5a], past signatures:[]}
+    installPermissionsFixed=false
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    requested permissions:
+      android.permission.POST_NOTIFICATIONS
+      android.permission.ACCESS_FINE_LOCATION
+      android.permission.MODIFY_AUDIO_SETTINGS
+      android.permission.FOREGROUND_SERVICE
+      android.permission.RECEIVE_BOOT_COMPLETED
+      android.permission.BLUETOOTH_CONNECT
+      android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+      android.permission.ACCESS_COARSE_LOCATION
+      android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE
+      android.permission.ACCESS_WIFI_STATE
+    install permissions:
+      android.permission.MODIFY_AUDIO_SETTINGS: granted=true
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.RECEIVE_BOOT_COMPLETED: granted=true
+      android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: granted=true
+      android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE: granted=true
+      android.permission.ACCESS_WIFI_STATE: granted=true
+    User 0: ceDataInode=471827 deDataInode=466029 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+      installReason=0
+      dataDir=/data/user/0/dev.voxvargr.aaarp
+      firstInstallTime=2026-07-21 07:18:19
+      uninstallReason=0
+      overlay paths:
+        /product/overlay/NavigationBarModeGesturalIndicator/NavigationBarModeGesturalOverlayIndicator.apk
+        /data/resource-cache/com.android.systemui-neutral-MAGo.frro
+        /data/resource-cache/com.android.systemui-accent-9GiT.frro
+        /data/resource-cache/com.android.systemui-dynamic-8XoM.frro
+      legacy overlay paths:
+        /product/overlay/NavigationBarModeGesturalIndicator/NavigationBarModeGesturalOverlayIndicator.apk
+      lastDisabledCaller: com.google.android.packageinstaller
+      runtime permissions:
+        android.permission.POST_NOTIFICATIONS: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.ACCESS_FINE_LOCATION: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.BLUETOOTH_CONNECT: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.ACCESS_COARSE_LOCATION: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+    User 999: ceDataInode=0 deDataInode=0 installed=false hidden=false suspended=false distractionFlags=0 stopped=true notLaunched=true enabled=0 instant=false virtual=false quarantined=false
+      installReason=0
+      dataDir=null
+      firstInstallTime=2026-07-21 07:18:19
+      uninstallReason=0
+      runtime permissions:
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+    dev.voxvargr.aaarp:
+      com.google.android.projection.gearhead
+  queries via component:
+    [app id 10302 not installed]:
+      dev.voxvargr.aaarp
+    cn.nubia.gamehelperline:
+      dev.voxvargr.aaarp
+    cn.zte.gamefloat:
+      dev.voxvargr.aaarp
+    [app id 10348 not installed]:
+      dev.voxvargr.aaarp
+    [app id 10361 not installed]:
+      dev.voxvargr.aaarp
+    [app id 10365 not installed]:
+      dev.voxvargr.aaarp
+    com.google.android.as:
+      dev.voxvargr.aaarp
+    com.google.android.as.oss:
+      dev.voxvargr.aaarp
+    com.artbit.seabattle.game:
+      dev.voxvargr.aaarp
+    com.banyac.midrive.app.na:
+      dev.voxvargr.aaarp
+    com.rovio.angrybirdsfriends:
+      dev.voxvargr.aaarp
+    com.amazon.mShop.android.shopping:
+      dev.voxvargr.aaarp
+    com.ecffri.arrows:
+      dev.voxvargr.aaarp
+    com.madfatcat.bomber:
+      dev.voxvargr.aaarp
+    org.breezyweather:
+      dev.voxvargr.aaarp
+    com.emn8.mobilem8.nativeapp.bk:
+      dev.voxvargr.aaarp
+    vukash.in.candycons.unwrapped:
+      dev.voxvargr.aaarp
+    com.ea.gp.bej3:
+      dev.voxvargr.aaarp
+    com.darkopd.iconpack:
+      dev.voxvargr.aaarp
+    com.auxbrain.egginc:
+      dev.voxvargr.aaarp
+    com.WalkTalk.FlightMaster:
+      dev.voxvargr.aaarp
+    com.cyberjoy.galaxydefense:
+      dev.voxvargr.aaarp
+    gbis.gbandroid:
+      dev.voxvargr.aaarp
+    com.qoni.guesstheiranswer:
+      dev.voxvargr.aaarp
+    com.game5mobile.lineandwater:
+      dev.voxvargr.aaarp
+    helium314.keyboard:
+      dev.voxvargr.aaarp
+    io.voodoo.holeio:
+      dev.voxvargr.aaarp
+    com.imgur.mobile:
+      dev.voxvargr.aaarp
+    com.sadpuppy.lemmings:
+      dev.voxvargr.aaarp
+    com.littlecaesars:
+      dev.voxvargr.aaarp
+    com.crazyowl.MagnetBalls2Free:
+      dev.voxvargr.aaarp
+    com.pomelogames.MarsGame:
+      dev.voxvargr.aaarp
+    com.mcdonalds.app:
+      dev.voxvargr.aaarp
+    com.facebook.orca:
+      dev.voxvargr.aaarp
+    com.vincentb.MobControl:
+      dev.voxvargr.aaarp
+    com.gait.MoveHouse3D:
+      dev.voxvargr.aaarp
+    com.blyts.nobodies:
+      dev.voxvargr.aaarp
+    org.ohcu.grip:
+      dev.voxvargr.aaarp
+    com.paytronix.client.android.app.pizzaranch:
+      dev.voxvargr.aaarp
+    com.pc.sand.loop:
+      dev.voxvargr.aaarp
+    com.ohmgames.cheatandrun:
+      dev.voxvargr.aaarp
+    com.screensavers_store.starfieldlivewallpaper:
+      dev.voxvargr.aaarp
+    com.stealthgame.master:
+      dev.voxvargr.aaarp
+    com.shortcircuitstudio.teenytinytrains:
+      dev.voxvargr.aaarp
+    com.trianguloy.urlchecker:
+      dev.voxvargr.aaarp
+    ru.zdevs.zarchiver:
+      dev.voxvargr.aaarp
+    com.wendys.nutritiontool:
+      dev.voxvargr.aaarp
+    com.disney.wheresmywater2_goo:
+      dev.voxvargr.aaarp
+    com.facebook.katana:
+      dev.voxvargr.aaarp
+    com.host4.pixelyglow:
+      dev.voxvargr.aaarp
+    eu.hxreborn.phdp:
+      dev.voxvargr.aaarp
+  queryable via interaction:
+    User 0:
+      [com.android.server.telecom,com.zte.zdm.omacp,com.android.localtransport,com.android.inputdevices,com.zte.burntest.camera,com.android.mipop,com.westalgo.aftersalecamera,com.android.aftersaleservice,cn.nubia.gpu.drivers,com.zte.distservice.servicemanager,com.ztefingerprint.service,com.android.subsys,android,androidzte,com.zte.fingerprints,com.zte.linkspeedup,com.android.location.fused,com.zte.floatassist,com.zte.zgesture,com.android.ztescreenshot,cn.nubia.gamepi,com.zte.mifavor.launcher.adapter,com.qualcomm.qti.services.systemhelper,com.android.settings,com.fingerprint.sensorservice,com.android.keychain,com.zte.powersavemode,com.android.providers.settings,com.android.DeviceAsWebcam,vendor.qti.frameworks.utils,com.zte.zsound,com.android.dynsystem,com.zte.wlansniffertool,com.zte.thermald]:
+        dev.voxvargr.aaarp
+      cn.nubia.gamelauncher:
+        dev.voxvargr.aaarp
+      com.zte.mifavor.launcher:
+        dev.voxvargr.aaarp
+      com.android.systemui:
+        dev.voxvargr.aaarp
+      com.google.android.ext.services:
+        dev.voxvargr.aaarp
+      app.lawnchair:
+        dev.voxvargr.aaarp
+      io.github.jd1378.otphelper:
+        dev.voxvargr.aaarp
+      helium314.keyboard:
+        dev.voxvargr.aaarp
+      com.heytap.health.international:
+        dev.voxvargr.aaarp
+      dev.voxvargr.automation:
+        dev.voxvargr.aaarp
+      [com.android.server.telecom,com.zte.zdm.omacp,com.android.localtransport,com.android.inputdevices,com.zte.burntest.camera,com.android.mipop,com.westalgo.aftersalecamera,com.android.aftersaleservice,cn.nubia.gpu.drivers,com.zte.distservice.servicemanager,com.ztefingerprint.service,com.android.subsys,android,androidzte,com.zte.fingerprints,com.zte.linkspeedup,com.android.location.fused,com.zte.floatassist,com.zte.zgesture,com.android.ztescreenshot,cn.nubia.gamepi,com.zte.mifavor.launcher.adapter,com.qualcomm.qti.services.systemhelper,com.android.settings,com.fingerprint.sensorservice,com.android.keychain,com.zte.powersavemode,com.android.providers.settings,com.android.DeviceAsWebcam,vendor.qti.frameworks.utils,com.zte.zsound,com.android.dynsystem,com.zte.wlansniffertool,com.zte.thermald]:
+        dev.voxvargr.aaarp
+    User 999:
+  queryable via uses-library:
+
+Dexopt state:
+  [dev.voxvargr.aaarp]
+    path: /data/app/~~gjV0_PenzcIOrlM7n_RuuA==/dev.voxvargr.aaarp-nCkcvjTJyWv5oe1I_ddg1w==/base.apk
+      arm64: [status=verify] [reason=vdex] [primary-abi]
+        [location is /data/app/~~gjV0_PenzcIOrlM7n_RuuA==/dev.voxvargr.aaarp-nCkcvjTJyWv5oe1I_ddg1w==/oat/arm64/base.vdex]
+
+Compiler stats:
+  [dev.voxvargr.aaarp]
+    (No recorded stats)

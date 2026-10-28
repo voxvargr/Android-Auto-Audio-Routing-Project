@@ -1,0 +1,36 @@
+ACTIVITY MANAGER SERVICES (dumpsys activity services)
+  User 0 active services:
+  * ServiceRecord{94e2039 u0 dev.voxvargr.aaarp/.RoutingMonitorService c:dev.voxvargr.aaarp}
+    intent={act=dev.voxvargr.aaarp.START cmp=dev.voxvargr.aaarp/.RoutingMonitorService}
+    packageName=dev.voxvargr.aaarp
+    processName=dev.voxvargr.aaarp
+    targetSdkVersion=36
+    baseDir=/data/app/~~gjV0_PenzcIOrlM7n_RuuA==/dev.voxvargr.aaarp-nCkcvjTJyWv5oe1I_ddg1w==/base.apk
+    dataDir=/data/user/0/dev.voxvargr.aaarp
+    app=ProcessRecord{480c033 19817:dev.voxvargr.aaarp/u0a834}
+    useNewWiuLogic_forCapabilities()=true
+    useNewWiuLogic_forStart()=true
+    useNewBfslLogic()=true
+    mAllowWiu_noBinding=DENIED
+    mAllowWiu_inBindService=DENIED
+    mAllowWiu_byBindings=DENIED
+    getFgsAllowWiu_legacy=DENIED
+    getFgsAllowWiu_new=DENIED
+    getFgsAllowWiu_forStart=DENIED
+    getFgsAllowWiu_forCapabilities=DENIED
+    allowUiJobScheduling=false
+    recentCallingPackage=dev.voxvargr.aaarp
+    recentCallingUid=10834
+    mAllowStart_noBinding=SYSTEM_ALLOW_LISTED
+    mAllowStart_inBindService=DENIED
+    mAllowStart_byBindings=DENIED
+    getFgsAllowStart_legacy=SYSTEM_ALLOW_LISTED
+    getFgsAllowStart_new=SYSTEM_ALLOW_LISTED
+    getFgsAllowStart=SYSTEM_ALLOW_LISTED
+    startForegroundCount=1
+    infoAllowStartForeground=[callingPackage: dev.voxvargr.aaarp; callingUid: 10834; uidState: RCVR; uidBFSL: n/a; intent: Intent { act=dev.voxvargr.aaarp.START xflg=0x4 cmp=dev.voxvargr.aaarp/.RoutingMonitorService }; code:SYSTEM_ALLOW_LISTED; tempAllowListReason:<,reasonCode:SYSTEM_ALLOW_LISTED,duration:9223372036854775807,callingUid:-1>; allowWiu:-1; targetSdkVersion:36; callerTargetSdkVersion:36; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+    isForeground=true foregroundId=9401 types=0x00000010 foregroundNoti=Notification(channel=aaarp-routing shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 actions=1 vis=PRIVATE)
+    createTime=-1d22h0m2s787ms startingBgTimeout=--
+    lastActivity=-1d20h21m13s102ms restartTime=-1d20h21m13s102ms createdFromFg=false
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=1
+ startCommandResult=1

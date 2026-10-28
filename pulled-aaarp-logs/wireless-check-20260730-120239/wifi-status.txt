@@ -1,0 +1,13 @@
+Wifi is enabled
+Wifi scanning is only available when wifi is enabled
+==== Primary ClientModeManager instance ====
+Wifi is connected to "SundekNash"
+WifiInfo: SSID: "SundekNash", BSSID: 30:86:2d:9a:18:b0, MAC: 42:54:90:96:9f:b7, IP: /10.1.10.122, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ac, RSSI: -58, Link speed: 325Mbps, Tx Link speed: 325Mbps, Max Supported Tx Link speed: 866Mbps, Calculated Tx : 91Mbps, Rx Link speed: 390Mbps, Max Supported Rx Link speed: 866Mbps, Calculated Rx : 367Mbps, Frequency: 5805MHz, Net ID: 7, Metered hint: false, score: 51, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"SundekNash"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+successfulTxPackets: 12369
+successfulTxPacketsPerSecond: 7.302738830009702
+retriedTxPackets: 2757
+retriedTxPacketsPerSecond: 2.9291066313612073
+lostTxPackets: 16
+lostTxPacketsPerSecond: 0.07444778603968481
+successfulRxPackets: 11706
+successfulRxPacketsPerSecond: 4.631422851494086

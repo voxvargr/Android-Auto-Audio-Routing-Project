@@ -7,3 +7,11 @@ app/build/
 captures/
 *.apk
 *.aab
+
+# Preserve the existing APK as migration evidence (not a build input).
+!migration/reference/app-debug.apk
+# Keep private signing/authentication material out of Git.
+*.jks
+*.keystore
+.env
+.env.*

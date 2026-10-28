@@ -1,0 +1,29 @@
+AAARP diagnostics
+Android Auto installed: yes
+Current communication route: NX809J - Earpiece - output
+Watch Android Auto: on
+Restore monitor after reboot: on
+Default Bluetooth target: VoxVargr Buds|OpenFit Pro by Shokz|A0:0C:E2:D1:ED:1F
+Release route after Android Auto disconnects: on
+Auto-stop after Android Auto disconnects: off
+Reset Bluetooth after Android Auto disconnects: on
+Notification route during Android Auto: off
+Try to stop notification ducking: on
+
+Bluetooth inventory
+Adapter: on
+Profiles: HFP/headset=connected, A2DP/media=connected, hearing aid=disconnected, LE audio=disconnected
+Paired devices:
+- A SPEAKER04 - 3B:65:77:CB:86:B6 - class 0x0404
+- F601_DA225A48 - 84:FC:14:44:10:27 - class 0x0420
+- Jensen Media Player - 41:42:A9:2B:4F:94 - class 0x0418
+- T86-CAB6 - 00:5D:60:97:22:DA - class 0x0408
+- VoxVargr Buds / OpenFit Pro by Shokz - A0:0C:E2:D1:ED:1F - class 0x0404
+- VoxVargr OPW3 / OnePlus Watch 3 43mm 00BV - 7C:F0:E5:7E:85:D0 - class 0x0704
+Available AAARP routes:
+- NX809J - Earpiece - output - id 2
+- NX809J - Speaker - output - id 3
+- NX809J - Bluetooth SCO - output - 00:00:00:00:00:00 - id 847
+
+Root diagnostics exit code: -1
+Unable to start su: Cannot run program "su": error=2, No such file or directory

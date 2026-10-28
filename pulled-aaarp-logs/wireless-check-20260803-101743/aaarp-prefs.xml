@@ -1,0 +1,86 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="active_profile_id">wifi_eaa5a098</string>
+    <string name="profile_wifi_daa1c005_label">CARLINK-CAB662</string>
+    <string name="profile_wifi_eaa5a098_selected_bluetooth_target_key">b8841118d6df</string>
+    <boolean name="profile_wifi_daa1c005_pin_media_to_bluetooth_during_android_auto" value="false" />
+    <boolean name="normalize_media_during_android_auto" value="true" />
+    <boolean name="profile_default_reset_bluetooth_after_android_auto" value="true" />
+    <string name="profile_wifi_eaa5a098_label">bike</string>
+    <boolean name="use_root" value="true" />
+    <string name="profile_wifi_eaa5a098_notification_route_mode">off</string>
+    <boolean name="profile_wifi_daa1c005_watchdog_mode" value="true" />
+    <boolean name="monitor_enabled" value="true" />
+    <boolean name="profile_default_auto_stop_after_android_auto" value="false" />
+    <boolean name="pin_media_to_bluetooth_during_android_auto" value="true" />
+    <string name="profile_default_selected_device_key">1:2:NX809J:</string>
+    <string name="connection_profile_wifi_eaa5a098">wifi_eaa5a098</string>
+    <boolean name="profile_default_pause_bluetooth_sco_during_media" value="true" />
+    <boolean name="profile_wifi_daa1c005_normalize_media_always" value="false" />
+    <boolean name="profile_wifi_daa1c005_release_route_after_android_auto" value="true" />
+    <boolean name="watchdog_mode" value="true" />
+    <boolean name="profile_wifi_eaa5a098_suppress_notification_ducking_always" value="false" />
+    <boolean name="profile_wifi_eaa5a098_release_route_after_android_auto" value="true" />
+    <boolean name="auto_stop_after_android_auto" value="false" />
+    <string name="selected_bluetooth_target_key">b8841118d6df</string>
+    <boolean name="profile_default_watchdog_mode" value="true" />
+    <string name="profile_wifi_eaa5a098_custom_bluetooth_query"></string>
+    <string name="profile_default_notification_route_mode">off</string>
+    <boolean name="profile_wifi_daa1c005_auto_stop_after_android_auto" value="false" />
+    <boolean name="profile_wifi_daa1c005_suppress_notification_ducking_always" value="false" />
+    <string name="selected_device_key">1:2:NX809J:</string>
+    <string name="custom_bluetooth_query"></string>
+    <boolean name="profile_wifi_eaa5a098_pause_bluetooth_sco_during_media" value="true" />
+    <boolean name="profile_wifi_eaa5a098_mute_notifications_during_playback_always" value="true" />
+    <boolean name="profile_default_mute_notifications_during_playback" value="true" />
+    <boolean name="profile_wifi_eaa5a098_normalize_media_during_android_auto" value="true" />
+    <boolean name="profile_wifi_daa1c005_suppress_notification_ducking" value="true" />
+    <string name="profile_wifi_eaa5a098_selected_device_key">1:2:NX809J:</string>
+    <boolean name="profile_wifi_eaa5a098_reset_bluetooth_after_android_auto" value="true" />
+    <string name="connection_profile_wifi_daa1c005">wifi_daa1c005</string>
+    <string name="profile_wifi_eaa5a098_preferred_bluetooth_query">J's OpenDots 2 by Shokz|OpenDots 2 by Shokz|B8:84:11:18:D6:DF</string>
+    <boolean name="profile_wifi_eaa5a098_normalize_media_always" value="false" />
+    <boolean name="reset_bluetooth_after_android_auto" value="true" />
+    <boolean name="suppress_notification_ducking" value="true" />
+    <boolean name="profile_default_suppress_notification_ducking" value="false" />
+    <boolean name="profile_wifi_eaa5a098_pin_media_to_bluetooth_during_android_auto" value="true" />
+    <set name="profile_ids">
+        <string>wifi_eaa5a098</string>
+        <string>wifi_daa1c005</string>
+    </set>
+    <boolean name="profile_wifi_daa1c005_mute_notifications_during_playback" value="true" />
+    <string name="profile_wifi_daa1c005_custom_bluetooth_query"></string>
+    <string name="profile_default_preferred_bluetooth_query">VoxVargr Buds|OpenFit Pro by Shokz|A0:0C:E2:D1:ED:1F</string>
+    <boolean name="profile_wifi_eaa5a098_media_volume_floor_fallback" value="false" />
+    <boolean name="gps_warmup_during_android_auto" value="true" />
+    <string name="profile_wifi_daa1c005_notification_route_mode">off</string>
+    <boolean name="pause_bluetooth_sco_during_media" value="true" />
+    <boolean name="profile_wifi_eaa5a098_watchdog_mode" value="true" />
+    <boolean name="profile_default_suppress_notification_ducking_always" value="false" />
+    <boolean name="profile_default_release_route_after_android_auto" value="true" />
+    <string name="profile_wifi_daa1c005_preferred_bluetooth_query">Jensen Media Player|Jensen Media Player|41:42:A9:2B:4F:94</string>
+    <boolean name="suppress_notification_ducking_always" value="false" />
+    <boolean name="profile_wifi_eaa5a098_media_dynamics_processing" value="false" />
+    <boolean name="mute_notifications_during_playback_always" value="true" />
+    <boolean name="profile_wifi_eaa5a098_auto_stop_after_android_auto" value="false" />
+    <string name="profile_default_custom_bluetooth_query"></string>
+    <boolean name="profile_wifi_eaa5a098_suppress_notification_ducking" value="true" />
+    <boolean name="normalize_media_always" value="false" />
+    <boolean name="media_dynamics_processing" value="false" />
+    <string name="notification_route_mode">off</string>
+    <string name="profile_default_selected_bluetooth_target_key">a00ce2d1ed1f</string>
+    <boolean name="profile_default_mute_notifications_during_playback_always" value="false" />
+    <boolean name="profile_wifi_daa1c005_mute_notifications_during_media" value="true" />
+    <string name="profile_wifi_daa1c005_selected_bluetooth_target_key">4142a92b4f94</string>
+    <boolean name="profile_wifi_daa1c005_reset_bluetooth_after_android_auto" value="true" />
+    <boolean name="profile_wifi_daa1c005_pause_bluetooth_sco_during_media" value="true" />
+    <boolean name="profile_wifi_eaa5a098_gps_warmup_during_android_auto" value="true" />
+    <string name="preferred_bluetooth_query">J's OpenDots 2 by Shokz|OpenDots 2 by Shokz|B8:84:11:18:D6:DF</string>
+    <boolean name="mute_notifications_during_playback" value="true" />
+    <boolean name="profile_wifi_eaa5a098_mute_notifications_during_playback" value="true" />
+    <boolean name="profile_wifi_daa1c005_mute_notifications_during_playback_always" value="true" />
+    <boolean name="release_route_after_android_auto" value="true" />
+    <boolean name="mute_notifications_during_media" value="true" />
+    <string name="profile_default_label">Default</string>
+    <string name="profile_wifi_daa1c005_selected_device_key">1:2:NX809J:</string>
+</map>

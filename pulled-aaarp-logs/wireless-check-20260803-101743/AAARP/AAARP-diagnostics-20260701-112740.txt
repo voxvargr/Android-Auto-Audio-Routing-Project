@@ -1,0 +1,149 @@
+AAARP diagnostics
+Android Auto installed: yes
+Current communication route: NX809J - Earpiece - output
+Watch Android Auto: on
+Default Bluetooth target: VoxVargr Buds|OpenFit Pro by Shokz|A0:0C:E2:D1:ED:1F
+Release route after Android Auto disconnects: on
+Auto-stop after Android Auto disconnects: on
+
+Bluetooth inventory
+Adapter: on
+Profiles: HFP/headset=connected, A2DP/media=connected, hearing aid=disconnected, LE audio=disconnected
+Paired devices:
+- A SPEAKER04 - 3B:65:77:CB:86:B6 - class 0x0404
+- F601_DA225A48 - 84:FC:14:44:10:27 - class 0x0420
+- Jensen Media Player - 41:42:A9:2B:4F:94 - class 0x0418
+- T86-CAB6 - 00:5D:60:97:22:DA - class 0x0408
+- VoxVargr Buds / OpenFit Pro by Shokz - A0:0C:E2:D1:ED:1F - class 0x0404
+- VoxVargr OPW3 / OnePlus Watch 3 43mm 00BV - 7C:F0:E5:7E:85:D0 - class 0x0704
+Available AAARP routes:
+- NX809J - Earpiece - output - id 2
+- NX809J - Speaker - output - id 3
+- NX809J - Bluetooth SCO - output - 00:00:00:00:00:00 - id 913
+
+Root diagnostics exit code: 0
+--- id ---
+uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+--- Android Auto PID ---
+--- cmd audio help ---
+--- dumpsys audio routes ---
+	com.android.media.audio.as_device_connection_failure:false
+	android.media.audio.automaticBtDeviceType - EOL
+	android.media.audio.scoManagedByAudio:false
+	com.android.media.audio.replaceStreamBtSco:true
+	com.android.media.audio.equalScoLeaVcIndexRange:true
+	com.android.media.audio.optimizeBtDeviceSwitch:false
+MediaFocusControl dump time: 11:27:40 AM
+Events log: focus commands as seen by MediaFocusControl
+Stream volumes (device: index)
+   Current: 1 (earpiece): 10, 2 (speaker): 10, 10 (bt_sco): 7, 80 (bt_a2dp): 7, 40000000 (default): 4
+   Devices: bt_a2dp(80)
+   Current: 1 (earpiece): 10, 2 (speaker): 11, 10 (bt_sco): 12, 80 (bt_a2dp): 11, 4000 (usb_device): 10, 40000000 (default): 10
+   Devices: bt_a2dp(80)
+   Current: 1 (earpiece): 10, 2 (speaker): 11, 10 (bt_sco): 11, 80 (bt_a2dp): 12, 4000 (usb_device): 10, 40000000 (default): 10
+   Devices: speaker(2), bt_a2dp(80)
+   Current: 1 (earpiece): 75, 2 (speaker): 45, 10 (bt_sco): 70, 80 (bt_a2dp): 105, 4000 (usb_device): 150, 40000000 (default): 70
+   Devices: bt_a2dp(80)
+   Current: 1 (earpiece): 8, 2 (speaker): 12, 10 (bt_sco): 8, 80 (bt_a2dp): 8, 40000000 (default): 8
+   Devices: speaker(2), bt_a2dp(80)
+   Current: 1 (earpiece): 10, 2 (speaker): 6, 10 (bt_sco): 6, 80 (bt_a2dp): 7, 4000 (usb_device): 6, 40000000 (default): 6
+   Devices: bt_a2dp(80)
+   Current: 1 (earpiece): 5, 2 (speaker): 5, 10 (bt_sco): 6, 80 (bt_a2dp): 5, 4000 (usb_device): 5, 40000000 (default): 5
+   Devices: bt_a2dp(80)
+   Current: 1 (earpiece): 10, 2 (speaker): 11, 10 (bt_sco): 12, 80 (bt_a2dp): 11, 4000 (usb_device): 10, 40000000 (default): 10
+   Devices: bt_a2dp(80)
+   Current: 1 (earpiece): 8, 2 (speaker): 11, 10 (bt_sco): 7, 80 (bt_a2dp): 11, 4000 (usb_device): 15, 40000000 (default): 7
+   Devices: speaker(2)
+   Current: 1 (earpiece): 8, 2 (speaker): 5, 10 (bt_sco): 8, 80 (bt_a2dp): 11, 4000 (usb_device): 15, 40000000 (default): 8
+   Devices: bt_a2dp(80)
+   Current: 1 (earpiece): 9, 2 (speaker): 13, 10 (bt_sco): 9, 80 (bt_a2dp): 9, 40000000 (default): 9
+   Devices: bt_a2dp(80)
+Volume Groups (device: index)
+   Devices: bt_a2dp
+   Devices: bt_a2dp
+   Devices: bt_a2dp
+   Current: 1 (earpiece): 8, 2 (speaker): 5, 10 (bt_sco): 15, 80 (bt_a2dp): 11, 4000 (usb_device): 15, 40000000 (default): 8
+   Devices: bt_a2dp
+   Current: 1 (earpiece): 8, 2 (speaker): 11, 10 (bt_sco): 15, 80 (bt_a2dp): 11, 4000 (usb_device): 15, 40000000 (default): 7
+   Devices: speaker
+   Current: 1 (earpiece): 15, 2 (speaker): 11, 10 (bt_sco): 12, 80 (bt_a2dp): 11, 4000 (usb_device): 10, 40000000 (default): 10
+   Devices: bt_a2dp
+   Current: 1 (earpiece): 7, 2 (speaker): 5, 10 (bt_sco): 6, 80 (bt_a2dp): 5, 4000 (usb_device): 7, 40000000 (default): 5
+   Devices: bt_a2dp
+   Current: 1 (earpiece): 10, 2 (speaker): 10, 10 (bt_sco): 10, 80 (bt_a2dp): 10, 40000000 (default): 4
+   Devices: bt_a2dp
+   Current: 1 (earpiece): 10, 2 (speaker): 6, 10 (bt_sco): 6, 80 (bt_a2dp): 7, 4000 (usb_device): 6, 40000000 (default): 6
+   Devices: bt_a2dp
+   Devices: speaker
+   Current: 1 (earpiece): 75, 2 (speaker): 45, 10 (bt_sco): 70, 80 (bt_a2dp): 105, 4000 (usb_device): 150, 40000000 (default): 70
+   Devices: bt_a2dp
+   Current: 1 (earpiece): 10, 2 (speaker): 11, 10 (bt_sco): 12, 80 (bt_a2dp): 12, 4000 (usb_device): 10, 40000000 (default): 10
+   Devices: speaker
+   Current: 1 (earpiece): 10, 2 (speaker): 11, 10 (bt_sco): 12, 80 (bt_a2dp): 11, 4000 (usb_device): 10, 40000000 (default): 10
+   Devices: bt_a2dp
+   Current: 1 (earpiece): 10, 2 (speaker): 10, 10 (bt_sco): 10, 80 (bt_a2dp): 10, 40000000 (default): 4
+   Devices: bt_a2dp
+   Devices: bt_a2dp
+ZAudioBluetoothSM:
+  A2DP State Machines:
+ZAudioA2dpStateMachine:
+  mDeviceAddress=A0:0C:E2:D1:ED:1F
+  mDeviceName=OpenFit Pro by Shokz
+  mLastDisconnectTime=2026-07-01 10:52:38.680
+ZAudioA2dpStateMachine:
+  mDeviceAddress=84:FC:14:44:10:27
+  mDeviceName=F601_DA225A48
+  mCurrentState=DISCONNECTED
+  mLastDisconnectTime=2026-07-01 10:52:47.264
+  mDeviceAddress=A0:0C:E2:D1:ED:1F
+  mDeviceName=VoxVargr Buds
+  mLastDisconnectTime=2026-07-01 10:52:38.670
+  mDeviceAddress=84:FC:14:44:10:27
+  mDeviceName=F601_DA225A48
+  mCurrentState=DISCONNECTED
+  mLastDisconnectTime=2026-07-01 10:52:46.786
+Audio routes:
+  mBluetoothName=OpenFit Pro by Shokz
+  mBtScoOnByApp=false
+  mFixedVolumeDevices=0x800,0x200000
+  mFullVolumeDevices=0x40000,0x40001
+  absolute volume devices=
+  adjust-only absolute volume devices=
+  pre-scale for bluetooth absolute volume = disabled
+  supportsBluetoothVariableLatency=true
+  isBluetoothVariableLatencyEnabled=true
+ Uid Device Affinities:
+ UserId Device Affinities:
+(not logged)  AudioPlaybackConfiguration piid:55 deviceIds:[] type:android.media.SoundPool u/pid:1000/3529 state:idle attr:AudioAttributes: usage=USAGE_ASSISTANCE_SONIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null sessionId:0 mutedState:none  FormatInfo{isSpatialized=false, channelMask=0x0, sampleRate=0}
+  AudioPlaybackConfiguration piid:63 deviceIds:[] type:android.media.SoundPool u/pid:10454/5941 state:idle attr:AudioAttributes: usage=USAGE_ASSISTANCE_SONIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null sessionId:0 mutedState:none  FormatInfo{isSpatialized=false, channelMask=0x0, sampleRate=0}
+  AudioPlaybackConfiguration piid:71 deviceIds:[] type:android.media.SoundPool u/pid:10294/6342 state:idle attr:AudioAttributes: usage=USAGE_MEDIA content=CONTENT_TYPE_UNKNOWN flags=0x800 tags= bundle=null sessionId:0 mutedState:none  FormatInfo{isSpatialized=false, channelMask=0x0, sampleRate=0}
+  AudioPlaybackConfiguration piid:8207 deviceIds:[559] type:android.media.MediaPlayer u/pid:10454/5941 state:stopped attr:AudioAttributes: usage=USAGE_VOICE_COMMUNICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null sessionId:7625 mutedState:none  FormatInfo{isSpatialized=false, channelMask=0x3, sampleRate=44100}
+  AudioPlaybackConfiguration piid:8951 deviceIds:[] type:android.media.SoundPool u/pid:10690/12582 state:idle attr:AudioAttributes: usage=USAGE_ASSISTANCE_SONIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null sessionId:0 mutedState:none  FormatInfo{isSpatialized=false, channelMask=0x0, sampleRate=0}
+  muted players (piids) awaiting device connection:
+07-01 11:22:11:590 player piid:11071 event:device updated deviceIds:[927]
+07-01 11:22:53:732 player piid:11079 event:device updated deviceIds:[927]
+07-01 11:24:08:199 player piid:11087 event:device updated deviceIds:[927]
+07-01 11:24:21:236 player piid:11095 event:device updated deviceIds:[927]
+07-01 11:25:37:670 player piid:11103 event:device updated deviceIds:[927]
+07-01 11:26:11:516 player piid:11111 event:device updated deviceIds:[927]
+07-01 11:26:37:973 player piid:11119 event:device updated deviceIds:[927]
+07-01 11:27:05:459 player piid:11127 event:device updated deviceIds:[927]
+AudioDeviceBroker:
+    Handler (com.android.server.audio.AudioDeviceBroker$BrokerHandler) {88e41ef} @ 55564711
+      Looper (AudioDeviceBroker, tid 180) {d594fa9}
+        dispatching message:{ delay=1ms dispatching=-33s981ms sending=-33s982ms what=36 target=com.android.server.audio.AudioDeviceBroker$BrokerHandler }
+  BECOMING_NOISY_INTENT_DEVICES_SET=
+  Preferred devices for strategy:
+  Non-default devices for strategy:
+  Connected devices:
+    [DeviceInfo: type:0x10 (bt_sco) name: addr:XX:XX:XX:XX:00:00 identity addr:XX:XX:XX:XX:00:00 codec: 0 group:-1 peer addr: peer identity addr: disabled modes: {}]
+    [DeviceInfo: type:0x80000008 (bt_sco_hs) name: addr:XX:XX:XX:XX:00:00 identity addr:XX:XX:XX:XX:00:00 codec: 0 group:-1 peer addr: peer identity addr: disabled modes: {}]
+    [DeviceInfo: type:0x80 (bt_a2dp) name:OpenFit Pro by Shokz addr:XX:XX:XX:XX:ED:1F identity addr:XX:XX:XX:XX:ED:1F codec: 4000000 group:-1 peer addr: peer identity addr: disabled modes: {}]
+  APM Connected device (A2DP sink only):
+     type:0x80 (bt_a2dp) addr:0x80:A0:0C:E2:D1:ED:1F
+  Preferred devices for capture preset:
+  Applied devices roles for strategies (from API):
+  Applied devices roles for strategies (internal):
+  Applied devices roles for presets (from API):
+  Applied devices roles for presets (internal:
+devices:
