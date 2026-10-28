@@ -1,0 +1,265 @@
+AAARP CURRENT SOURCE ARCHITECTURE AND CONTINUATION NOTES
+Prepared 2026-10-28 from the restored upstream source in this transfer checkout.
+
+EVIDENCE AND SCOPE
+This report describes checked-in source, not a new physical-device acceptance test.
+The migration handoff records the exact upstream commit and transfer verification.
+The outer workspace contained an older, much smaller original prototype. Its saved
+migration/local-prototype-snapshot is historical evidence, not the active app.
+The current app is Android Auto Audio Routing Project (AAARP); it is not the separate
+YTM Loudness Normalizer, Vox Automation, or another Android project.
+
+1. BUILD AND MODULE MAP
+settings.gradle.kts includes five modules, producing four APKs:
+- app: dev.voxvargr.aaarp; version 0.1.0 / versionCode 1; minSdk 23.
+- volume-up: dev.voxvargr.aaarp.volumeup; version 0.1.0 / code 1; minSdk 23.
+- volume-down: dev.voxvargr.aaarp.volumedown; version 0.1.0 / code 1; minSdk 23.
+- aa-trust-hook: dev.voxvargr.aaarp.aatrusthook; version 0.5.0 / code 5;
+  minSdk 30; optional LSPosed/libxposed module.
+- volume-shortcut-common: Android library shared by the two helpers, not an APK.
+All compile against SDK 36; app APK targets are SDK 36. Java source/target is 17.
+Root build.gradle.kts pins Android application/library plugins to 9.2.0; wrapper
+pins Gradle 9.4.1. The wrapper JAR is included. Main app is Java with platform
+Views, not Compose. Shared helper uses androidx.car.app:app and app-projected
+1.7.0. Hook is compileOnly libxposed API 102.0.0; JUnit is 4.13.2.
+Install main app before helpers. Expected debug APKs:
+  app/build/outputs/apk/debug/app-debug.apk
+  volume-up/build/outputs/apk/debug/volume-up-debug.apk
+  volume-down/build/outputs/apk/debug/volume-down-debug.apk
+  aa-trust-hook/build/outputs/apk/debug/aa-trust-hook-debug.apk
+Build/toolchain/check results are recorded by the main transfer task separately.
+
+2. SIGNING AND PHONE REQUIREMENTS
+Main app and BOTH volume helpers must share a signing certificate. Their broadcast
+bridge uses dev.voxvargr.aaarp.permission.ADJUST_MEDIA_VOLUME, protectionLevel
+signature. A new machine's debug key normally cannot update an existing package
+signed with another machine's key. Export settings before any uninstall. If the
+old signing key is intentionally not migrated, replace main and both helpers as
+a consistently signed set, then import settings and recheck permissions/root and
+battery access. Hook does not need the same signing certificate for this bridge.
+Do not commit private signing keys, debug.keystore, machine SDK paths, or tokens.
+
+The project targets the user's rooted Red Magic 11 Pro / Android 16 use case.
+Public route requests work without a system privilege, but watchdog connection
+recognition and shell policy tweaks need usable su access. The UI checkbox is
+labelled 'Use root for diagnostics and volume shortcuts'; it selects root volume
+execution and backup access-restoration behavior. It is not a universal gate
+around every root operation in this code.
+
+Permissions include Bluetooth connect, notification display, location, foreground
+connectedDevice/location service, boot receive, Wi-Fi state, and battery exemption
+request. GPS warmup needs Precise Location; allow-all-the-time location and vendor
+autostart/battery settings matter for a locked phone/in-pocket startup. Root manager
+authorization and LSPosed activation are device state, not Git contents.
+
+3. MAIN APP SOURCE MAP
+app/src/main/java/dev/voxvargr/aaarp/:
+- MainActivity.java: programmatic dark UI; device/target lists; profile detection,
+  loading/saving; route/monitor controls; GPS/battery/root/sound settings; diagnostics;
+  document-picker settings backup/restore.
+- AudioRouteController.java: enumerate communication routes, target matching, public
+  communication-device routing, ownership tracking, audio-policy shell integration,
+  media/notification stream access, loudness/dynamics effects, route diagnostics.
+- RoutingMonitorService.java: state machine, foreground notification, watchdog loop,
+  audio tweaks and cleanup, call/assistant guards, volume ownership, automatic logs.
+- RootShell.java: bounded su commands, diagnostics, Bluetooth reset, permissions and
+  battery restore, audio-strategy device-role commands, volume command execution.
+- AndroidAutoStatus.java / AndroidAutoConnection.java: process and wireless identity.
+- ProfileSettings.java / AppPrefs.java: typed preferences and connection mappings.
+- BluetoothDeviceCatalog.java / BluetoothTarget.java / RouteDevice.java: bonded-device
+  inventory, route identity/address matching, device labels and platform device masks.
+- LocationWarmup.java: short GPS-provider listener with cleanup.
+- SettingsBackup.java: versioned JSON settings and access snapshot.
+- AutoLogWriter.java / DiagnosticsFileWriter.java / BuildIdentity.java: log storage,
+  downloadable diagnostics, app/APK identity evidence.
+- BootRestoreReceiver.java: conditional reboot/package-replaced monitor restore.
+- AndroidAutoVolumeShortcutProvider.java / AndroidAutoVolumeShortcutReceiver.java /
+  MusicVolumeStepper.java / ManualMediaVolumeTracker.java: authenticated shortcut
+  bridge, bounded asynchronous single-step execution, manual-volume ownership.
+
+4. ROUTING, WATCHDOG, AND PROFILES
+API 31+: enumerate getAvailableCommunicationDevices() and use
+setCommunicationDevice(). Older APIs list Bluetooth outputs and can request legacy
+SCO. Empty device lists get a synthetic Legacy Bluetooth SCO fallback. Saved route
+keys contain type, transient device ID, name, and address. Bluetooth match queries
+contain alias/name/address separated by '|', normalized before matching. Device IDs
+can change after reconnect; use actual target/address evidence, not an old ID alone.
+Maintain skips reapplying an already-current route. Current API31+ code does not
+force MODE_IN_COMMUNICATION before the normal route request; legacy fallback does.
+Clear removes the communication-device preference or stops legacy SCO. These APIs
+cannot establish that every other app's media, microphone, or call was routed.
+
+Foreground monitor checks active routing about every 2 seconds and idle Android
+Auto about every 5 seconds (certain always-on tweaks keep a faster schedule).
+With watchdog enabled (default true), it waits for Android Auto and a configured,
+connected preferred target before communication routing. Three missed active-AA
+checks trigger disconnect handling. It can release routing (default true), reset
+Bluetooth (default false), or stop the monitor (default false). Stop performs
+cleanup and clears the route when release is enabled and no call mode is active.
+A sticky restart and boot/package-replaced receiver can restore monitoring when
+monitor_enabled was true and restore_monitor_after_boot (default true) is enabled.
+Vendor ROM autostart restrictions can still block this.
+
+IMPORTANT: AudioRouteController.isAndroidAutoRunningWithRoot() requires BOTH a
+Gearhead process AND currentAndroidAutoConnection().specific(). The detector reads
+root Wi-Fi status and recognizes AA-like ephemeral/requested/untrusted Wi-Fi. A
+wired-only session lacking that identity is treated as idle by this implementation.
+This source observation needs a physical test before promising wired support.
+
+Connection keys use a normalized SSID/BSSID-derived hash. Named connection profiles
+map exact connection key first, normalized label alias second; unknown connections
+use Default. Exact mappings override aliases. Detect AA while connected, select the
+intended existing profile, tune it, then Save Profile to bind the connection. This
+supports BSSID changes via label aliases but alias collisions remain a test case.
+Global preferences and profile-specific keys are in the same aaarp_prefs store.
+
+5. SOUND TWEAKS, CALLS, ASSISTANT, AND GPS
+Optional root audio-policy behavior discovers strategy IDs from dumpsys and calls
+cmd audio set-device-role-for-strategy / clear-device-role-for-strategy for
+sonification notifications or pinned media. Shell code includes fallback strategy
+ID 5, so validate the actual ROM output. Media pinning blocks Gearhead
+TAKE_AUDIO_FOCUS; duck suppression blocks SystemUI TAKE_AUDIO_FOCUS. Cleanup sets
+these appops to allow and clears roles; it does not retain an arbitrary prior appop
+value. Several commands tolerate individual errors with '|| true'; command exit
+success is not proof every policy change succeeded. Apply/clear workers are
+asynchronous threads; exercise rapid setting/disconnect transitions on device.
+
+Optional mute-notifications-during-playback owns a notification-volume change and
+restores it when appropriate, with a 15-second playback-gap grace. Optional quiet
+media boost uses global-session LoudnessEnhancer (+1200 millibels), optionally
+DynamicsProcessing compressor/limiter settings. This is not measured per-track LUFS
+normalization. Optional volume-floor fallback raises music volume toward 92% only
+when it acquires ownership; it should relinquish to manual changes. AA playback
+gaps retain effects up to 120 seconds; non-AA grace is 15 seconds. Availability and
+actual effect of global-session processing are device dependent.
+
+Call/ringtone/communication modes cause the monitor to yield routing, clear
+notification mute, and clear owned media boost; mode-query errors fail open by
+leaving routes alone. Assistant/navigation-guidance playback activates a guard and
+12-second grace, temporarily suspending AAARP media pinning before restoring it.
+Do not infer successful voice reply/microphone operation from these guards alone;
+see preserved voice-reply handoff and real recording/input-policy diagnostics.
+
+GPS warmup briefly requests GPS_PROVIDER updates, stops on a fix at most 30 seconds
+old, and times out at 45 seconds. It upgrades/downgrades the foreground location
+service type while active. It cannot force Google Maps to accept a fix.
+
+6. VOLUME HELPERS AND LSPOSED DOCK HOOK
+The retired AAARP Volume media shell/Notification Access relay was removed. Do not
+reintroduce a media-browser auto-action: AA may probe services without a user tap,
+causing phantom volume changes. Real music app owns media card/session/artwork.
+Helpers have IoT Car App metadata, icons, and launcher fallback. This declaration
+is a private prototype workaround, not a truthful Play-approved volume-utility
+category. Fallback sends one configured signature-protected action then finishes
+its car app. Helpers create no media session, notification relay, or audio focus.
+
+Hook metadata is statically scoped to com.google.android.projection.gearhead.
+A compatible LSPosed/libxposed framework must support API min101/target102. Install,
+enable for Android Auto, reboot, then validate. Install-source trust spoof is
+restricted to exactly the two helper packages. The dock reflection is written for
+Android Auto 17.3: classes mkx/nhc/nhr/nkn/nhl and nkt click handling. Feed 9 PHONE
+is displayed as Volume +; feed 10 RECENT as Volume -. Map/media feeds are preserved.
+No public pinning API or fifth dock slot is implemented; AA updates can break it.
+
+Dock taps call content://dev.voxvargr.aaarp.volumeshortcut method volume_up/down
+in the main app then suppress helper navigation, retaining map/dashboard screen.
+Main provider requires Gearhead's START_PROJECTED_ACTIVITY signature permission
+and exact singleton UID/package identity; rejects other calls/args/extras. It
+sends an explicit foreground/include-stopped broadcast after Binder identity clear.
+Main package receives work because RedMagic can screen-off-stop icon-only helpers.
+
+Volume receiver has one serial worker plus three queued steps; excess requests are
+rejected/logged. Each step adjusts phone STREAM_MUSIC once with normal API flags 0,
+or root 'cmd media_session volume --stream 3 --adj raise|lower' bounded to 2 seconds.
+Root failure never falls back to public API, preventing a second accidental step.
+Readback/bounds/fixed-volume/no-effect/error states are recorded. Manual generation
+is process-local; changed or uncertain dispatched steps signal the monitor to
+relinquish owned volume-floor restore. Phone stream volume is not independent
+headunit-amplifier/knob volume.
+
+7. SETTINGS EXPORT / IMPORT AND DATA BOUNDARIES
+Preferred signing-change migration: while old installed app is intact, tap its
+Backup Settings button, save AAARP-settings-backup.json with Android's
+CREATE_DOCUMENT picker, and copy that JSON off the phone. New app uses OPEN_DOCUMENT
+picker via Restore Settings to import. This action restores actual settings; cloning Git alone does not
+read the live phone's private preferences.
+
+SettingsBackup JSON has format 'dev.voxvargr.aaarp.settings', version 1,
+createdAtMillis, preferences, and access. Preferences encode string, boolean, and
+stringSet values, including profiles/mappings. It excludes monitor_enabled and
+retired media_relay_enabled/profile relay keys. Integers/floats/longs are not encoded
+by this implementation. Access snapshot records runtime permission states,
+battery-optimization exemption, and whether root diagnostics was enabled.
+
+Restore rejects wrong format/version/missing preferences, then CLEARS existing
+preferences and commits recognized restored entries. It is replacement, not merge.
+Back up the current state first. Stop Monitor before Restore Settings; import
+does not stop an already-running service. When the snapshot says root was on
+and su is available, restore attempts pm grant for previously granted relevant
+runtime permissions, notification appop, and deviceidle battery exemption. Those
+shell attempts are best effort; recheck Android UI/diagnostics rather than treating
+an exit code as proof. No signing key, Bluetooth pairing, LSPosed enabled/scope
+state, root-manager grant, Android Auto host state, APK, or logs are in the JSON.
+It intentionally does not restore an actively running monitor flag; after import,
+review target/profile and explicitly Start Monitor.
+
+Main manifest sets allowBackup=false. Do not rely on Android automatic app backup
+or adb backup to preserve preferences. Historical XML/tar backups and pulled logs
+in this repo are evidence from their dates, not confirmation of current phone
+state. Direct XML restoration with root must account for app stopped state,
+user/ownership/SELinux labels and preference caching; JSON UI path is preferred.
+
+8. DIAGNOSTICS AND LOG LOCATIONS
+AutoLogWriter writes app-external Documents/AAARP-auto-logs, normally:
+/sdcard/Android/data/dev.voxvargr.aaarp/files/Documents/AAARP-auto-logs/
+Files rotate at about 2 MiB, are pruned after 14 days, total cap about 16 MiB.
+Logs include state changes and ~30-second heartbeat; root snapshots at about
+120 seconds when active. They can contain device names/addresses and Wi-Fi identity.
+Manual Save Diagnostics writes Download/AAARP/AAARP-diagnostics-*.txt on API29+;
+older versions use app-external Downloads. BuildIdentity includes version/code,
+install/update timestamps, base-APK path and SHA-256. Version remains 0.1.0 across
+many changes, so APK SHA/source commit is important when identifying a build.
+Root diagnostics prioritize recent audio-recording history and current input
+clients before larger focus, media-session, Bluetooth/Wi-Fi/audio-policy dumps.
+Root shell tries multiple su locations, bounds operations, and caps diagnostic
+output around 32,000 characters; truncation can still require targeted dumps.
+
+9. TEST INVENTORY AND UNRESOLVED VERIFICATION
+Source contains 41 @Test methods in 10 classes:
+  app: AndroidAutoConnectionTest 3; AndroidAutoVolumeShortcutProviderTest 2;
+       AndroidAutoVolumeShortcutReceiverTest 3; AppPrefsTest 1;
+       ManualMediaVolumeTrackerTest 5; MusicVolumeStepperTest 16;
+       ProfileSettingsTest 4; RoutingMonitorVolumeOwnershipTest 1.
+  aa-trust-hook: TrustPolicyTest 4.
+  volume-shortcut-common: VolumeShortcutCommandProviderTest 2.
+These are local JUnit tests for pure policy/command/readback/ownership behavior.
+They do not establish actual LSPosed reflection, service lifecycle, audio policy,
+root permissions, GPS, vehicle route, or screen-off behavior. No androidTest
+instrumentation suite or explicit TODO/FIXME markers were found in active source.
+No tests were run by this read-only architecture-audit subtask.
+
+For continuation: run the repository's build/lint/local-unit-test tasks, record
+exact results/tool versions, then verify on physical phone and AA headunit:
+- Consistent signing and all four APK identities; helper receiver protection.
+- JSON export/import roundtrip of profiles/targets; permission and battery restore;
+  invalid JSON/wrong version; import replacement and monitor restart behavior.
+- Wireless identity, exact/alias/default profile selection; BSSID change/collision;
+  wired-only detection behavior before promising support.
+- Target absent/reconnect, watch versus earbuds, stale device ID, Bluetooth permission
+  denial/revocation; no route takeover in an unrelated correctly working car.
+- Monitor start/stop/boot/upgrade, OEM autostart/battery and locked-screen survival.
+- Media quality/SCO avoidance; root tweak apply/cleanup; notification volume/ducking;
+  quiet-media effects/floor ownership after manual taps and volume-button changes.
+- Dock map/media remain, +/- acts once without navigation, burst queue overflow,
+  locked-screen taps, framework/AA updates, hook disabled/unavailable fail behavior.
+- Call/ringtone/VoIP and Assistant/navigation/voice-reply paths; separately test
+  actual output and microphone, recording source, and cleanup after disconnect.
+- GPS permission changes, fresh/stale fix, timeout, and listener/service-type cleanup.
+
+Source-level follow-ups worth review: ACTION_APPLY_ONCE still starts the recurring
+monitor; preferences monitor_enabled is intent state, not a service-liveness proof;
+legacy SCO path may report requested success when unavailable; enumeration before
+apply's try/catch and some clear paths can expose permission/runtime exceptions;
+root strategy fallback and best-effort command success need explicit evidence;
+concurrent tweak/cleanup threads and shell/root waits need lifecycle stress tests.
+These are review targets, not newly reproduced runtime failures.

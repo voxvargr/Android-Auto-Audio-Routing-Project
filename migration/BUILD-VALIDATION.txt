@@ -1,0 +1,73 @@
+AAARP MIGRATION VALIDATION - 2026-10-28 (America/Chicago)
+
+PASS: Exact upstream GitHub main recovered at
+7a60777503ffcf94e48011dfa6f3d5da1eb01ad2.
+All 83 upstream blobs, all tree objects, and original commit SHA verified.
+git fsck --full passed for the shallow upstream checkout.
+Active application/build/test source was compared to that base with git diff:
+no changes. Only migration docs/data, Git attributes and ignores are added.
+
+PASS: All 89 local diagnostic files (51,877,852 bytes) and 18 older source/config
+files copied byte for byte. All 107 original/copy SHA256 pairs matched.
+tools/Verify-PreservedData.ps1 verifies the committed preservation manifest.
+Historical paths are marked -text in .gitattributes to prevent EOL conversion.
+
+PASS: Derived historical settings JSON independently parsed and compared with
+its XML source: 79 retained typed values (26 strings, 52 booleans, 1 string set)
+from 80 original entries; monitor_enabled intentionally omitted. No access
+grants or current-state timestamp invented. No live app import was performed.
+
+BLOCKED: Gradle build, tests and lint were attempted but did not reach task
+execution in this restricted session. They did not pass or fail app compilation.
+Requested command:
+  .\gradlew.bat --offline --no-daemon assembleDebug testDebugUnitTest lintDebug --stacktrace
+First blocker:
+  Gradle wrapper could not open its user-home distribution lock:
+  C:\Users\VoxVargr Wolfheart\.gradle\wrapper\dists\gradle-9.4.1-bin\
+  arn2x92ynaizyzdaamcbpbhtj\gradle-9.4.1-bin.zip.lck (Access is denied)
+A second attempt used the SAME already-installed Gradle 9.4.1 distribution and
+a repository-local GRADLE_USER_HOME, leaving build/source unchanged.
+Second blocker:
+  Gradle could not connect to its single-use daemon at 127.0.0.1:
+  java.net.SocketException: Permission denied: getsockopt
+No attempt was made to escalate or disable sandbox restrictions. Rerun the
+normal wrapper command on the destination machine with writable cache/network.
+An empty new machine also needs dependency downloads. Existing @Test inventory
+is 41 tests in 10 classes, not 41 executed passes.
+
+TOOLCHAIN OBSERVED:
+  Android Studio JBR OpenJDK 21.0.10; source/target compatibility Java 17.
+  Wrapper Gradle 9.4.1; AGP 9.2.0; Android platform 36 present.
+  ADB 37.0.0-14910828 present, but adb devices could not start its daemon.
+No fresh phone state, installed APK, runtime permissions, or root/LSPosed state
+was retrieved. No phone installation, uninstall, setting or route mutation.
+
+OLD LOCAL GENERATED ARTIFACT (NOT A NEW BUILD):
+  Parent workspace app/build/outputs/apk/debug/app-debug.apk
+  Length: 978070 bytes
+  Local LastWriteTime: 2026-07-13 12:19:35 (America/Chicago machine time)
+  SHA256: 7F33919DF70A2D5344C9CDAD5C0946960BDC5BCD68DDE3112553D10E9024F61E
+  aapt2 manifest inspection shows boot restore and later permissions absent
+  from parent visible prototype source. It is historical and not evidence of
+  today's phone or the complete August 19 source. It remains untouched in the
+  original workspace and is preserved only as a historical reference in
+  migration/prior-preparation/reference/app-debug.apk.
+No artifact was installed or decompiled.
+
+SCOPE:
+  No active app code or dependencies changed during this migration.
+  Historical handoffs are retained verbatim and may describe already-fixed
+  issues. Physical AA/media/call/Assistant/GPS/dock tests remain unperformed.
+  No GitHub push, external branch update, or force push was performed.
+
+FINAL TRANSFER CHECKS:
+Four additional earlier preparation files (including the reference APK) were
+found in the parent workspace and preserved with PRIOR-PREPARATION.sha256.
+Both manifests verified: 111 files total. A fresh export from the staged Git
+index with Windows CRLF conversion enabled also verified all 111 hashes.
+The first test export hit Windows path-length limits; a shorter destination
+and core.longpaths=true passed. Use a short destination on the new machine.
+Staged diff whitespace check passed (raw historical paths exempt).
+No active app/build/test source changes relative to upstream; no tracked
+private-key/config credential files; exactly one explicit historical APK.
+Remote main was rechecked and remained the exact recorded base commit.

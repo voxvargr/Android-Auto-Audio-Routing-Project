@@ -1,0 +1,98 @@
+AAARP MIGRATION DATA INVENTORY
+Prepared: 2026-10-28 (America/Chicago)
+
+PURPOSE AND SCOPE
+This directory preserves the original local project's historical source baseline
+and all local pulled diagnostics while the active source in AAARP-transfer comes
+from the newer GitHub repository. The original project files were not changed.
+Do not replace the newer active source with local-prototype-snapshot.
+This transfer was prepared locally for the user to review and push; these data
+were not automatically published by the preservation task.
+
+PRESERVED ORIGINALS
+1. pulled-aaarp-logs/: 89 files, 51,877,852 bytes total. Maximum file size is
+   5,649,163 bytes. All originals are preserved byte-for-byte, including duplicate
+   historical captures, empty logcat output, XML preferences and dumpsys exports.
+2. migration/local-prototype-snapshot/: 18 files from the original workspace:
+   app/src/ (manifest, seven Java sources, four resource XMLs),
+   app/build.gradle.kts, root README.md, build.gradle.kts, settings.gradle.kts,
+   gradle.properties and .gitignore. This is an older historical baseline, not
+   the active app implementation. Its README was stale even on the old machine.
+3. migration/PRESERVED-FILES.sha256: 107 SHA-256 entries, with paths relative to
+   the AAARP-transfer repository root. Every preserved source/copy pair was
+   hashed and compared successfully at creation. The manifest covers the copied
+   originals only; it deliberately does not hash this inventory or itself.
+
+CAPTURE MAP
+- AAARP-auto-logs/: July 20-21, 2026 auto logs.
+- AAARP-auto-logs-20260724/: July 21-24 auto logs.
+- AAARP-auto-logs-latest/: an older nested July 21-22 capture. The directory name
+  'latest' is historical; it is not the newest data in this transfer.
+- wireless-check-20260730-120239/: July 30 preferences, AAARP service/process
+  state, audio/audio-policy/Bluetooth/Wi-Fi/media dumps, July 27-30 auto logs,
+  and exported diagnostics dated July 1-27.
+- wireless-check-20260803-101743/: newest dated pulled capture. Includes
+  preferences, package/service/process state, audio/Bluetooth/Wi-Fi/media dumps,
+  July 31-August 3 auto logs and earlier exported diagnostics.
+- aaarp_prefs_before_signature_reinstall.xml and
+  aaarp_prefs_corrected_after_signature_reinstall.xml: historical paired
+  before/after preference snapshots for the previous signing change.
+
+PREFERENCES AND RESTORE GUIDANCE
+The before/corrected reinstall snapshots contain 71 entries each. July 30 has 78
+entries; August 3 has 80. There are two connection-specific profile IDs plus the
+default profile. Profile IDs, Bluetooth addresses, selected audio route IDs and
+Wi-Fi identities are device/environment-specific data, not APK signing keys.
+
+The corrected reinstall XML deliberately changes global/bike media pinning from
+false to true and changes the car profile's preferred/selected Bluetooth target
+from the earbuds to Jensen Media Player. Preserve that distinction; the older
+before snapshot must not be treated as the desired corrected configuration.
+
+Newest pulled preferences enable root, monitoring and watchdog; AA media
+pinning, AA-only quiet-media normalization, GPS warmup and SCO pause for media;
+route release and Bluetooth reset after AA disconnect. They disable automatic
+monitor stop, quiet-media normalization outside AA, volume fallback and dynamics
+processing. Notification routing is off. Duck suppression is enabled in AA but
+not outside AA. Playback notification muting is enabled including outside AA.
+
+These are historical captures through August 3, not a fresh October phone
+backup. Do not automatically restore one over current on-device preferences.
+If reinstalling with a different signing key, first export the phone's CURRENT
+preferences and user-visible logs before any uninstall. Preserve the full XML,
+set ownership/SELinux context appropriately if a root restore is necessary, and
+recheck profile/route selection and permissions after install. Never assume
+adb install -r can replace an APK signed with a different key.
+
+EVIDENCE LIMITS
+The last August 3 auto-log tail shows Android Auto idle, MODE_NORMAL, default
+profile, preferred target disconnected and routing inactive. This is not proof
+that wireless Android Auto routing works or that an earlier issue was fixed.
+Historical July 27 diagnostics show KernelSU root context, HFP connected and
+A2DP disconnected at that particular capture. Do not generalize that state.
+The historical package dump reports dev.voxvargr.aaarp, version 0.1.0/code 1,
+minSdk 23/targetSdk 36, lastUpdateTime 2026-08-03 07:31:09.
+
+ORIGINAL LOCAL BUILD EVIDENCE (NOT TRANSFERRED AS GENERATED FILES)
+The original wrapper is complete, including gradle-wrapper.jar (46,175 bytes),
+and targets Gradle 9.4.1. Original Android plugin is 9.2.0 and compile/target SDK
+36, Java source/target 17. The original machine has Android Studio's OpenJDK
+21.0.10, SDK36 and ADB 37.0.0. JAVA_HOME/ANDROID_HOME/ANDROID_SDK_ROOT were unset;
+local.properties contains an old machine-specific SDK location. Set up the new
+machine from the ACTIVE checkout build files, not these historical defaults.
+An old generated debug APK existed (978,070 bytes) but is reproducible and is
+not part of this data snapshot. No fresh device check was available: the local
+ADB daemon could not start in the execution sandbox.
+
+EXCLUSIONS AND PRIVACY
+No .git internals, .gradle/.idea caches, app/build or root build outputs,
+local.properties, generated APKs/AABs, debug/release keystores, ADB credentials,
+or user-home tool caches were copied into this historical snapshot.
+Raw diagnostics and preference XMLs contain Bluetooth/Wi-Fi/device identifiers,
+network names/addresses, installed-package and media/process information. They
+are personal diagnostic data. A limited scan found no PEM private keys or
+obvious actual credentials; password/token keyword hits inspected were Wi-Fi
+diagnostic counters. That limited scan is not an exhaustive privacy guarantee.
+If the destination repository is public, pushing these raw originals publishes
+those identifiers. The user requested preserving all data for their own push;
+no automatic push was performed by the preservation task.

@@ -5,4 +5,7 @@
     <color name="aaarp_muted">#5E6A75</color>
     <color name="aaarp_accent">#0F766E</color>
     <color name="aaarp_accent_dark">#0B5C55</color>
+    <color name="aaarp_icon_red">#B0182D</color>
+    <color name="aaarp_icon_red_dark">#7F1021</color>
+    <color name="aaarp_icon_bot">#78D86F</color>
 </resources>

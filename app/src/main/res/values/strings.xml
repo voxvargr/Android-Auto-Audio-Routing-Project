@@ -2,5 +2,5 @@
     <string name="app_name">AAARP</string>
     <string name="monitor_channel_name">AAARP routing</string>
     <string name="monitor_notification_title">AAARP routing active</string>
-    <string name="monitor_notification_text">Keeping the selected communication device preferred.</string>
+    <string name="monitor_notification_text">Watching the selected communication route.</string>
 </resources>

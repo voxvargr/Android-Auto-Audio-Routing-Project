@@ -1,0 +1,508 @@
+{
+  "preparedDate": "2026-10-28",
+  "repository": "https://github.com/voxvargr/Android-Auto-Audio-Routing-Project",
+  "branch": "main",
+  "baseCommit": "7a60777503ffcf94e48011dfa6f3d5da1eb01ad2",
+  "baseTree": "6f0aae16266f02a71c747c9ab7e70681b8d3a8da",
+  "method": "Exact shallow checkout reconstructed from GitHub connector bytes; all Git object hashes verified. Shell git clone network failed. Remote history unchanged.",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "gitBlobSha1": "dfe0770424b2a19faf507a501ebfc23be8f54e7b",
+      "size": 66,
+      "mode": "100644"
+    },
+    {
+      "path": ".gitignore",
+      "gitBlobSha1": "46da6afdd0200f94984a43ec12b512e0dcfefa99",
+      "size": 79,
+      "mode": "100644"
+    },
+    {
+      "path": "AAARP-DIAGNOSTIC-HANDOFF-20260727.txt",
+      "gitBlobSha1": "537327563d5ea87f8cae253e5075590202e08a5b",
+      "size": 14369,
+      "mode": "100644"
+    },
+    {
+      "path": "AAARP-VOICE-REPLY-HANDOFF-20260811.txt",
+      "gitBlobSha1": "3d11c64b7e04805cd45d416d9b106bf380e1378c",
+      "size": 13671,
+      "mode": "100644"
+    },
+    {
+      "path": "README.md",
+      "gitBlobSha1": "eafcad8eb72e73f3399f794ad9de19ea9f598d6f",
+      "size": 6784,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/build.gradle.kts",
+      "gitBlobSha1": "19a2d36ca664fbc36408466fa327aff6bdeaa765",
+      "size": 1028,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/main/AndroidManifest.xml",
+      "gitBlobSha1": "81eadc6b774d6fd0f014d036d6e251bd2f4db528",
+      "size": 312,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/main/java/dev/voxvargr/aaarp/aatrusthook/AndroidAutoTrustHook.java",
+      "gitBlobSha1": "2ecbd4b4ff551b4ef5f8a788ca58f21c2bc0f38b",
+      "size": 15903,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/main/java/dev/voxvargr/aaarp/aatrusthook/TrustPolicy.java",
+      "gitBlobSha1": "0e18038ce6f03cc354c51453914958d9487515a3",
+      "size": 2037,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/main/res/values/strings.xml",
+      "gitBlobSha1": "2a8bba4a8833945b20610379127dcc9208428cf3",
+      "size": 272,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/main/resources/META-INF/xposed/java_init.list",
+      "gitBlobSha1": "ffab7b7050d31e5eeede61aeab03ea01fb20a66f",
+      "size": 52,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/main/resources/META-INF/xposed/module.prop",
+      "gitBlobSha1": "afe7b972047da457b9af64728b70bacf63200a9b",
+      "size": 56,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/main/resources/META-INF/xposed/scope.list",
+      "gitBlobSha1": "04ecda8ad29d2d52826a5b5abfcaf42fb612c278",
+      "size": 39,
+      "mode": "100644"
+    },
+    {
+      "path": "aa-trust-hook/src/test/java/dev/voxvargr/aaarp/aatrusthook/TrustPolicyTest.java",
+      "gitBlobSha1": "3d7a771f781c20940f76882391a44eee7ff3c6d4",
+      "size": 2971,
+      "mode": "100644"
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "gitBlobSha1": "056f23386fe9c34a6184087f1b7fab70291f81be",
+      "size": 482,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/AndroidManifest.xml",
+      "gitBlobSha1": "1c3534b2f3fd087c3debe4a0d3589cc02dd49cc5",
+      "size": 3807,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/AndroidAutoConnection.java",
+      "gitBlobSha1": "a13773e0558b51e860306624cd8992db096d24c0",
+      "size": 5125,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/AndroidAutoStatus.java",
+      "gitBlobSha1": "f770260e35a14260187323e4de16f4bb71b41734",
+      "size": 1030,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/AndroidAutoVolumeShortcutProvider.java",
+      "gitBlobSha1": "8d2df0e22b0ae9f13ec739c0fbd3ee32af3a993f",
+      "size": 4757,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/AndroidAutoVolumeShortcutReceiver.java",
+      "gitBlobSha1": "94afc7171f62c8dc73f565e798ca506607f7c47b",
+      "size": 4287,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/AppPrefs.java",
+      "gitBlobSha1": "7f0706e93eff1e5dfa58df148b18c949bafce0b8",
+      "size": 3644,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/AudioRouteController.java",
+      "gitBlobSha1": "043f337be6ac7696b3dd34253e6e90336996be05",
+      "size": 32998,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/AutoLogWriter.java",
+      "gitBlobSha1": "0a6b29231e4a10e6b2bc140b728f7ec35788934f",
+      "size": 4485,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/BluetoothDeviceCatalog.java",
+      "gitBlobSha1": "23f8285db42f5197d78c907b78415b1db53e954e",
+      "size": 7452,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/BluetoothTarget.java",
+      "gitBlobSha1": "ca8d117fe7e8c3e9adc3f3342b026d8e1eee6074",
+      "size": 2819,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/BootRestoreReceiver.java",
+      "gitBlobSha1": "090ce7e4c5ffcd75b0fb5d8aa8649998a4c27871",
+      "size": 1432,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/BuildIdentity.java",
+      "gitBlobSha1": "3a84922e7cac27373581271c9b0520a0fb662b24",
+      "size": 3244,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/DiagnosticsFileWriter.java",
+      "gitBlobSha1": "39a2b75bdc839c25084baed4e6be0cfe49b27042",
+      "size": 2842,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/LocationWarmup.java",
+      "gitBlobSha1": "6d09a76687b27fe29d3093ec131710d67786b29c",
+      "size": 8258,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/MainActivity.java",
+      "gitBlobSha1": "93e49605e00ec8331064a7a2897ed88aa46527cf",
+      "size": 63600,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/ManualMediaVolumeTracker.java",
+      "gitBlobSha1": "10d10713927c81465f5e1f9f9e12974360d70736",
+      "size": 825,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/MusicVolumeStepper.java",
+      "gitBlobSha1": "346d449333dc1b5f048686a1a21cb4c1c3605c00",
+      "size": 11199,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/ProfileSettings.java",
+      "gitBlobSha1": "8005970a77728c78a0f654e3c64d8228dfddb5ad",
+      "size": 22031,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/RootShell.java",
+      "gitBlobSha1": "0765cfd9d0bbcf1b0be57ebe661c38b4a2a19413",
+      "size": 19641,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/RouteDevice.java",
+      "gitBlobSha1": "5c6b2032e2378b25448dd927e393c7aa6e406501",
+      "size": 6130,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/RoutingMonitorService.java",
+      "gitBlobSha1": "046aee2168c1aa1ff7860d4f77a57569a04ced82",
+      "size": 50611,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/java/dev/voxvargr/aaarp/SettingsBackup.java",
+      "gitBlobSha1": "5eaead90a90e263eac335c2f0b9c53358e2ac203",
+      "size": 15258,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher.xml",
+      "gitBlobSha1": "921d354614f9f60a554db1d1bf687b45bf81ea8d",
+      "size": 2925,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher_background.xml",
+      "gitBlobSha1": "7eea1a6df4099bdefa8d445b47092eb0b56dec4e",
+      "size": 476,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "gitBlobSha1": "9182d74c1e7fcede15afe18c28fe71cd91ce787a",
+      "size": 2773,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher_round.xml",
+      "gitBlobSha1": "f86e41a18b71f15e27a56f71281753720f0bef28",
+      "size": 3128,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "gitBlobSha1": "413f12c6a22e542ae47efb1984a3d77134fb3315",
+      "size": 234,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "gitBlobSha1": "413f12c6a22e542ae47efb1984a3d77134fb3315",
+      "size": 234,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi/ic_launcher.xml",
+      "gitBlobSha1": "921d354614f9f60a554db1d1bf687b45bf81ea8d",
+      "size": 2925,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi/ic_launcher_round.xml",
+      "gitBlobSha1": "f86e41a18b71f15e27a56f71281753720f0bef28",
+      "size": 3128,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/values/colors.xml",
+      "gitBlobSha1": "5a67a464f86828325edb9138636ce74b308a4efc",
+      "size": 456,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/values/strings.xml",
+      "gitBlobSha1": "d61c00c3fbaf4efdc5afe3911b76e5886e6702a0",
+      "size": 304,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/main/res/values/styles.xml",
+      "gitBlobSha1": "45857f5b5562c52855bfa47016a28aecc7ea4860",
+      "size": 518,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/AndroidAutoConnectionTest.java",
+      "gitBlobSha1": "e48e4d6e5be759e60a0434d7269f9e0062f247d1",
+      "size": 1123,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/AndroidAutoVolumeShortcutProviderTest.java",
+      "gitBlobSha1": "a06a560e4d69fccd3bfd41c7a7ed69428dccf50c",
+      "size": 1966,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/AndroidAutoVolumeShortcutReceiverTest.java",
+      "gitBlobSha1": "327da099174213e324f05543a187a862512bc64f",
+      "size": 1174,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/AppPrefsTest.java",
+      "gitBlobSha1": "1417cf1c5099ebbe28319a3d216ca4584062abc9",
+      "size": 567,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/ManualMediaVolumeTrackerTest.java",
+      "gitBlobSha1": "b746cc1188e6c2be240c83d3bde09324e221a1f4",
+      "size": 2536,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/MusicVolumeStepperTest.java",
+      "gitBlobSha1": "02cf8829cb8ffaefcfe23f0b02917de7a9618366",
+      "size": 14318,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/ProfileSettingsTest.java",
+      "gitBlobSha1": "3b8e112f3385bbdc61817ce18c913a672c393b7c",
+      "size": 1498,
+      "mode": "100644"
+    },
+    {
+      "path": "app/src/test/java/dev/voxvargr/aaarp/RoutingMonitorVolumeOwnershipTest.java",
+      "gitBlobSha1": "b9a9f0287a518bd02d4210201e5ce0a0bd78b2e1",
+      "size": 882,
+      "mode": "100644"
+    },
+    {
+      "path": "build.gradle.kts",
+      "gitBlobSha1": "1ebaae4470a0de9aca3c89d9ab04bd0aff66c31a",
+      "size": 132,
+      "mode": "100644"
+    },
+    {
+      "path": "device-backups/AAARP-20260720-164727/aaarp-data-20260720-164727.tar.gz",
+      "gitBlobSha1": "4bd9f26536a9d3c79f4592b9371d935614ca1353",
+      "size": 1704,
+      "mode": "100644"
+    },
+    {
+      "path": "gradle.properties",
+      "gitBlobSha1": "e82b0187fe37beb44e0390fc1671d531cc94ebde",
+      "size": 109,
+      "mode": "100644"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.jar",
+      "gitBlobSha1": "61285a659d17295f1de7c53e24fdf13ad755c379",
+      "size": 46175,
+      "mode": "100644"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.properties",
+      "gitBlobSha1": "c61a118f7ddb21223f1a2fdd05f6aec1b9863aec",
+      "size": 252,
+      "mode": "100644"
+    },
+    {
+      "path": "gradlew",
+      "gitBlobSha1": "adff685a0348c64b2b64f0b302f1f82b28eeaaea",
+      "size": 8618,
+      "mode": "100644"
+    },
+    {
+      "path": "gradlew.bat",
+      "gitBlobSha1": "c4bdd3ab8e3ccd2ac3a2bc0db0f856f16b79ef39",
+      "size": 2803,
+      "mode": "100644"
+    },
+    {
+      "path": "settings.gradle.kts",
+      "gitBlobSha1": "142c22cb9564bb8058d8c00dfe8b139ca55b1d2e",
+      "size": 432,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-down/build.gradle.kts",
+      "gitBlobSha1": "88b9c68992e78e41a90aa076e257197e330e450d",
+      "size": 514,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-down/src/main/AndroidManifest.xml",
+      "gitBlobSha1": "8d3550bf26b1ce50d279886d1efd754fdbea17a0",
+      "size": 1403,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-down/src/main/res/drawable/ic_launcher_foreground.xml",
+      "gitBlobSha1": "8075bbfd2b7e3d19e947b4d4c55d4ed105e483ab",
+      "size": 331,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-down/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "gitBlobSha1": "7248a345fc98355ca105712bc81a3e72ce35fa6b",
+      "size": 338,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-down/src/main/res/mipmap-anydpi/ic_launcher.xml",
+      "gitBlobSha1": "e32684e142c9086ec756cac88b4080abce96658a",
+      "size": 467,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-down/src/main/res/values/strings.xml",
+      "gitBlobSha1": "f4db8f9919064dd2499fa414fcba61d81b474bfa",
+      "size": 166,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-down/src/main/res/xml/automotive_app_desc.xml",
+      "gitBlobSha1": "0fb852c0fc40501a5bc88ac48c029ac43162fc36",
+      "size": 101,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-shortcut-common/build.gradle.kts",
+      "gitBlobSha1": "eae0b5f49ed78f80c3e0645ff1eaff4acda814db",
+      "size": 473,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-shortcut-common/src/main/AndroidManifest.xml",
+      "gitBlobSha1": "66c79ea33336cb39f84e6a79066843ba23c68c54",
+      "size": 918,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-shortcut-common/src/main/java/dev/voxvargr/aaarp/shortcut/VolumeShortcutCarAppService.java",
+      "gitBlobSha1": "37d724425ba6a0336add8f6cde88a685de0b2fe1",
+      "size": 5039,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-shortcut-common/src/main/java/dev/voxvargr/aaarp/shortcut/VolumeShortcutCommandProvider.java",
+      "gitBlobSha1": "5184d01c7fd59b295b264ae3137dd8bf120b011d",
+      "size": 5431,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-shortcut-common/src/test/java/dev/voxvargr/aaarp/shortcut/VolumeShortcutCommandProviderTest.java",
+      "gitBlobSha1": "d32d1d06de536181d91c31d3cba0df568fee9bfd",
+      "size": 1708,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-up/build.gradle.kts",
+      "gitBlobSha1": "d2697f579c8e7eefcdbaa8dfa2d37f5030491ca6",
+      "size": 510,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-up/src/main/AndroidManifest.xml",
+      "gitBlobSha1": "a923f71332b24788a61474d130d2ff3584320a7e",
+      "size": 1401,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-up/src/main/res/drawable/ic_launcher_foreground.xml",
+      "gitBlobSha1": "d70f0b26d9e4b6e3fe429cb319f2a94f5065d73b",
+      "size": 359,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-up/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "gitBlobSha1": "7248a345fc98355ca105712bc81a3e72ce35fa6b",
+      "size": 338,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-up/src/main/res/mipmap-anydpi/ic_launcher.xml",
+      "gitBlobSha1": "639490f8adf5bbd48c5848d6a8a5a420421dcee1",
+      "size": 495,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-up/src/main/res/values/strings.xml",
+      "gitBlobSha1": "d568b6f8b4dfefa20faff0aa0aa862d27614fab9",
+      "size": 164,
+      "mode": "100644"
+    },
+    {
+      "path": "volume-up/src/main/res/xml/automotive_app_desc.xml",
+      "gitBlobSha1": "0fb852c0fc40501a5bc88ac48c029ac43162fc36",
+      "size": 101,
+      "mode": "100644"
+    }
+  ]
+}

@@ -1,2 +1,9 @@
-# Auto detect text files and perform LF normalization
+# Normalize source text while preserving historical evidence byte for byte.
 * text=auto
+gradlew text eol=lf
+*.bat text eol=crlf
+pulled-aaarp-logs/** -text -whitespace
+migration/local-prototype-snapshot/** -text -whitespace
+device-backups/** -text
+
+migration/prior-preparation/** -text -whitespace

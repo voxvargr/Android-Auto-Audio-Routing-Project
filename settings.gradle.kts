@@ -16,3 +16,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "AAARP"
 include(":app")
+include(":volume-shortcut-common")
+include(":volume-up")
+include(":volume-down")
+include(":aa-trust-hook")

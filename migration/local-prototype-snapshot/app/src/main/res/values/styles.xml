@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.AAARP" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/aaarp_bg</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/aaarp_accent</item>
+        <item name="android:navigationBarColor">@color/aaarp_bg</item>
+        <item name="android:statusBarColor">@color/aaarp_panel</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

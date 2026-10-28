@@ -3,15 +3,25 @@
 *.iml
 local.properties
 build/
-app/build/
 captures/
 *.apk
 *.aab
-
-# Preserve the existing APK as migration evidence (not a build input).
-!migration/reference/app-debug.apk
-# Keep private signing/authentication material out of Git.
+.cxx/
+.externalNativeBuild/
+# Machine-specific credentials and signing material
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pem
+*.key
 .env
 .env.*
+keystore.properties
+signing.properties
+
+# Local migration build-validation cache
+.gradle-user-home/
+
+# Preserve one historical APK as evidence only.
+!migration/prior-preparation/reference/app-debug.apk

@@ -1,0 +1,339 @@
+{
+  "format": "dev.voxvargr.aaarp.settings",
+  "version": 1,
+  "preferences": {
+    "active_profile_id": {
+      "type": "string",
+      "value": "wifi_eaa5a098"
+    },
+    "auto_stop_after_android_auto": {
+      "type": "boolean",
+      "value": false
+    },
+    "connection_profile_wifi_daa1c005": {
+      "type": "string",
+      "value": "wifi_daa1c005"
+    },
+    "connection_profile_wifi_eaa5a098": {
+      "type": "string",
+      "value": "wifi_eaa5a098"
+    },
+    "custom_bluetooth_query": {
+      "type": "string",
+      "value": ""
+    },
+    "gps_warmup_during_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "media_dynamics_processing": {
+      "type": "boolean",
+      "value": false
+    },
+    "mute_notifications_during_media": {
+      "type": "boolean",
+      "value": true
+    },
+    "mute_notifications_during_playback": {
+      "type": "boolean",
+      "value": true
+    },
+    "mute_notifications_during_playback_always": {
+      "type": "boolean",
+      "value": true
+    },
+    "normalize_media_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "normalize_media_during_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "notification_route_mode": {
+      "type": "string",
+      "value": "off"
+    },
+    "pause_bluetooth_sco_during_media": {
+      "type": "boolean",
+      "value": true
+    },
+    "pin_media_to_bluetooth_during_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "preferred_bluetooth_query": {
+      "type": "string",
+      "value": "J's OpenDots 2 by Shokz|OpenDots 2 by Shokz|B8:84:11:18:D6:DF"
+    },
+    "profile_default_auto_stop_after_android_auto": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_default_custom_bluetooth_query": {
+      "type": "string",
+      "value": ""
+    },
+    "profile_default_label": {
+      "type": "string",
+      "value": "Default"
+    },
+    "profile_default_mute_notifications_during_playback": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_default_mute_notifications_during_playback_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_default_notification_route_mode": {
+      "type": "string",
+      "value": "off"
+    },
+    "profile_default_pause_bluetooth_sco_during_media": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_default_preferred_bluetooth_query": {
+      "type": "string",
+      "value": "VoxVargr Buds|OpenFit Pro by Shokz|A0:0C:E2:D1:ED:1F"
+    },
+    "profile_default_release_route_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_default_reset_bluetooth_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_default_selected_bluetooth_target_key": {
+      "type": "string",
+      "value": "a00ce2d1ed1f"
+    },
+    "profile_default_selected_device_key": {
+      "type": "string",
+      "value": "1:2:NX809J:"
+    },
+    "profile_default_suppress_notification_ducking": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_default_suppress_notification_ducking_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_default_watchdog_mode": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_ids": {
+      "type": "stringSet",
+      "value": [
+        "wifi_daa1c005",
+        "wifi_eaa5a098"
+      ]
+    },
+    "profile_wifi_daa1c005_auto_stop_after_android_auto": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_daa1c005_custom_bluetooth_query": {
+      "type": "string",
+      "value": ""
+    },
+    "profile_wifi_daa1c005_label": {
+      "type": "string",
+      "value": "CARLINK-CAB662"
+    },
+    "profile_wifi_daa1c005_mute_notifications_during_media": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_daa1c005_mute_notifications_during_playback": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_daa1c005_mute_notifications_during_playback_always": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_daa1c005_normalize_media_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_daa1c005_notification_route_mode": {
+      "type": "string",
+      "value": "off"
+    },
+    "profile_wifi_daa1c005_pause_bluetooth_sco_during_media": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_daa1c005_pin_media_to_bluetooth_during_android_auto": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_daa1c005_preferred_bluetooth_query": {
+      "type": "string",
+      "value": "Jensen Media Player|Jensen Media Player|41:42:A9:2B:4F:94"
+    },
+    "profile_wifi_daa1c005_release_route_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_daa1c005_reset_bluetooth_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_daa1c005_selected_bluetooth_target_key": {
+      "type": "string",
+      "value": "4142a92b4f94"
+    },
+    "profile_wifi_daa1c005_selected_device_key": {
+      "type": "string",
+      "value": "1:2:NX809J:"
+    },
+    "profile_wifi_daa1c005_suppress_notification_ducking": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_daa1c005_suppress_notification_ducking_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_daa1c005_watchdog_mode": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_auto_stop_after_android_auto": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_eaa5a098_custom_bluetooth_query": {
+      "type": "string",
+      "value": ""
+    },
+    "profile_wifi_eaa5a098_gps_warmup_during_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_label": {
+      "type": "string",
+      "value": "bike"
+    },
+    "profile_wifi_eaa5a098_media_dynamics_processing": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_eaa5a098_media_volume_floor_fallback": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_eaa5a098_mute_notifications_during_playback": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_mute_notifications_during_playback_always": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_normalize_media_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_eaa5a098_normalize_media_during_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_notification_route_mode": {
+      "type": "string",
+      "value": "off"
+    },
+    "profile_wifi_eaa5a098_pause_bluetooth_sco_during_media": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_pin_media_to_bluetooth_during_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_preferred_bluetooth_query": {
+      "type": "string",
+      "value": "J's OpenDots 2 by Shokz|OpenDots 2 by Shokz|B8:84:11:18:D6:DF"
+    },
+    "profile_wifi_eaa5a098_release_route_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_reset_bluetooth_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_selected_bluetooth_target_key": {
+      "type": "string",
+      "value": "b8841118d6df"
+    },
+    "profile_wifi_eaa5a098_selected_device_key": {
+      "type": "string",
+      "value": "1:2:NX809J:"
+    },
+    "profile_wifi_eaa5a098_suppress_notification_ducking": {
+      "type": "boolean",
+      "value": true
+    },
+    "profile_wifi_eaa5a098_suppress_notification_ducking_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "profile_wifi_eaa5a098_watchdog_mode": {
+      "type": "boolean",
+      "value": true
+    },
+    "release_route_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "reset_bluetooth_after_android_auto": {
+      "type": "boolean",
+      "value": true
+    },
+    "selected_bluetooth_target_key": {
+      "type": "string",
+      "value": "b8841118d6df"
+    },
+    "selected_device_key": {
+      "type": "string",
+      "value": "1:2:NX809J:"
+    },
+    "suppress_notification_ducking": {
+      "type": "boolean",
+      "value": true
+    },
+    "suppress_notification_ducking_always": {
+      "type": "boolean",
+      "value": false
+    },
+    "use_root": {
+      "type": "boolean",
+      "value": true
+    },
+    "watchdog_mode": {
+      "type": "boolean",
+      "value": true
+    }
+  },
+  "provenance": {
+    "description": "Historical fallback converted from the August 3, 2026 pulled SharedPreferences XML; not a fresh phone export.",
+    "sourcePath": "pulled-aaarp-logs/wireless-check-20260803-101743/aaarp-prefs.xml",
+    "sourceCaptureDate": "2026-08-03",
+    "sourceSha256": "62af22e9b554cec22c32a5163bffe62c7adc55e1cc3fb08a2121ae09081bae25",
+    "sourceXmlEntryCount": 80,
+    "retainedPreferenceCount": 79,
+    "excludedKeys": [
+      "monitor_enabled"
+    ],
+    "unsupportedKeys": [],
+    "accessSnapshot": "Absent: historical XML does not establish runtime grants or battery optimization exemption.",
+    "restoreBehavior": "Replaces existing preferences; monitor_enabled is omitted, so manually start monitoring after review."
+  }
+}

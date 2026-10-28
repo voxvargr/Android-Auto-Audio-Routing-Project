@@ -1,6 +1,7 @@
 package dev.voxvargr.aaarp;
 
 import android.media.AudioDeviceInfo;
+import android.os.Build;
 
 import java.util.Locale;
 
@@ -8,14 +9,16 @@ final class RouteDevice {
     private final int id;
     private final int type;
     private final String name;
+    private final String address;
     private final boolean source;
     private final boolean sink;
     private final boolean realDevice;
 
-    RouteDevice(int id, int type, String name, boolean source, boolean sink, boolean realDevice) {
+    RouteDevice(int id, int type, String name, String address, boolean source, boolean sink, boolean realDevice) {
         this.id = id;
         this.type = type;
         this.name = name;
+        this.address = address == null ? "" : address;
         this.source = source;
         this.sink = sink;
         this.realDevice = realDevice;
@@ -26,10 +29,12 @@ final class RouteDevice {
         String label = productName == null || productName.length() == 0
                 ? "Audio device " + device.getId()
                 : productName.toString();
+        String address = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? device.getAddress() : "";
         return new RouteDevice(
                 device.getId(),
                 device.getType(),
                 label,
+                address,
                 device.isSource(),
                 device.isSink(),
                 true
@@ -37,7 +42,7 @@ final class RouteDevice {
     }
 
     static RouteDevice legacyBluetoothSco() {
-        return new RouteDevice(-1, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "Legacy Bluetooth SCO", true, true, false);
+        return new RouteDevice(-1, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, "Legacy Bluetooth SCO", "", true, true, false);
     }
 
     int id() {
@@ -48,8 +53,16 @@ final class RouteDevice {
         return type;
     }
 
+    String name() {
+        return name;
+    }
+
+    String address() {
+        return address;
+    }
+
     String key() {
-        return String.format(Locale.US, "%d:%d:%s", type, id, name);
+        return String.format(Locale.US, "%d:%d:%s:%s", type, id, name, address);
     }
 
     boolean isRealDevice() {
@@ -64,6 +77,58 @@ final class RouteDevice {
                 || type == AudioDeviceInfo.TYPE_BLE_BROADCAST;
     }
 
+    boolean isBluetoothSco() {
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
+    }
+
+    boolean isBluetoothMediaOutput() {
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                || type == AudioDeviceInfo.TYPE_BLE_HEADSET
+                || type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+                || type == AudioDeviceInfo.TYPE_BLE_BROADCAST;
+    }
+
+    int audioSystemOutputDevice() {
+        switch (type) {
+            case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE:
+                return 0x1;
+            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:
+                return 0x2;
+            case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                return 0x4;
+            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                return 0x8;
+            case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                return 0x10;
+            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                return 0x80;
+            case AudioDeviceInfo.TYPE_BLE_HEADSET:
+            case AudioDeviceInfo.TYPE_BLE_SPEAKER:
+                return 0x20000000;
+            default:
+                return 0;
+        }
+    }
+
+    boolean matchesTarget(String target) {
+        if (target == null) {
+            return false;
+        }
+        String[] parts = target.split("\\|");
+        for (String part : parts) {
+            String normalizedTarget = normalize(part);
+            if (normalizedTarget.length() == 0) {
+                continue;
+            }
+            if (normalize(name).contains(normalizedTarget)
+                    || normalize(address).contains(normalizedTarget)
+                    || normalize(typeLabel()).contains(normalizedTarget)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     String displayLabel() {
         String direction;
         if (source && sink) {
@@ -75,7 +140,12 @@ final class RouteDevice {
         } else {
             direction = "route";
         }
-        return name + " - " + typeLabel() + " - " + direction;
+        String addressLabel = address.length() == 0 ? "" : " - " + address;
+        return name + " - " + typeLabel() + " - " + direction + addressLabel;
+    }
+
+    String detailLabel() {
+        return displayLabel() + " - id " + id;
     }
 
     String typeLabel() {
@@ -88,6 +158,8 @@ final class RouteDevice {
                 return "BLE headset";
             case AudioDeviceInfo.TYPE_BLE_SPEAKER:
                 return "BLE speaker";
+            case AudioDeviceInfo.TYPE_BLE_BROADCAST:
+                return "BLE broadcast";
             case AudioDeviceInfo.TYPE_WIRED_HEADSET:
                 return "Wired headset";
             case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
@@ -96,8 +168,27 @@ final class RouteDevice {
                 return "Earpiece";
             case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:
                 return "Speaker";
+            case AudioDeviceInfo.TYPE_BUILTIN_MIC:
+                return "Built-in mic";
+            case AudioDeviceInfo.TYPE_TELEPHONY:
+                return "Telephony";
+            case AudioDeviceInfo.TYPE_REMOTE_SUBMIX:
+                return "Remote submix";
+            case AudioDeviceInfo.TYPE_FM_TUNER:
+                return "FM tuner";
             default:
                 return "Type " + type;
         }
+    }
+
+    private static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase(Locale.US)
+                .replace(":", "")
+                .replace("-", "")
+                .replace(" ", "")
+                .trim();
     }
 }
